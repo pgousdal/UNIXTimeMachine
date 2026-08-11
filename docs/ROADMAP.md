@@ -4,7 +4,13 @@
 Repository contract, taxonomy, manifests, catalog, validation, policies, provisioning skeleton.
 
 ## M1 — UNIX V7 / PDP-11
-Reproducible SIMH machine, verified media, boot/readiness, guest terminal.
+**IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION.** Reproducible SIMH
+PDP-11/70 definition, external-media verification, immutable golden import,
+disposable sessions, bounded readiness, local console lifecycle, tests, and
+Debian-family provisioning are implemented. M1 becomes COMPLETE only after a
+real host boots a disposable session to the V7 login state, stops it, recreates
+it from the golden baseline, and boots successfully a second time. Synthetic
+tests and an unpinned medium do not satisfy that gate.
 
 ## M2 — Session broker
 PTY/TCP handoff, timeouts, admission, audit, teardown.

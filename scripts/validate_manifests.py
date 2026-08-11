@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import sys
+import re, sys
 from manifestlib import INVENTORY_DIR, load_yaml, system_manifests
 VALID_TRACKS={"unix","unixish","beyond-unix"}
 def main():
@@ -14,6 +14,16 @@ def main():
             if not isinstance(data["year"], int): raise ValueError(f"{path}: year must be int")
             if not data["emulator"].get("family"): raise ValueError(f"{path}: emulator.family required")
             if not isinstance(data["session"].get("public_eligible"), bool): raise ValueError(f"{path}: public_eligible bool required")
+            media=data.get("media",{})
+            if media.get("policy") != "external": raise ValueError(f"{path}: media.policy must be external")
+            for item in media.get("items",[]):
+                for key in ("logical_name","filenames","required"):
+                    if key not in item: raise ValueError(f"{path}: media item missing {key}")
+                if not isinstance(item["filenames"],list) or not item["filenames"]: raise ValueError(f"{path}: media filenames must be non-empty list")
+                if any(not isinstance(n,str) or "/" in n or "\\" in n or n in (".","..") for n in item["filenames"]): raise ValueError(f"{path}: unsafe media filename")
+                if not isinstance(item["required"],bool): raise ValueError(f"{path}: media required must be bool")
+                if item.get("size") is not None and (not isinstance(item["size"],int) or item["size"] < 0): raise ValueError(f"{path}: bad media size")
+                if item.get("sha256") is not None and not re.fullmatch(r"[0-9a-fA-F]{64}",item["sha256"]): raise ValueError(f"{path}: bad sha256")
             manifests[sid]=data
         except Exception as e: errors.append(str(e))
     for p in sorted(INVENTORY_DIR.glob("*.yml")):

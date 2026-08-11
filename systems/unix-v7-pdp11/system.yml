@@ -9,18 +9,42 @@ machine:
   vendor: Digital Equipment Corporation
   model: PDP-11/70
   cpu: PDP-11
+  memory: 2M
 emulator:
   family: simh
   profile: pdp11
+  executables:
+    - pdp11
+  configuration: simh.ini.in
+  boot_device: RP0
+  disk:
+    controller: RH70
+    device: RP06
+    unit: RP0
 terminal:
   preferred: vt100
   fallback: ansi
 media:
   policy: external
   directory: unix-v7-pdp11
-  required: []
+  items:
+    - logical_name: installation-tape
+      filenames:
+        - v7.tap
+        - unix-v7.tap
+      size: null
+      sha256: null
+      required: true
+      purpose: Operator-supplied UNIX Seventh Edition installation tape image
+prepared:
+  golden_filename: v7-rp06.dsk
+  session_filename: rp0.dsk
+readiness:
+  patterns:
+    - "login:"
+  timeout_seconds: 120
 session:
   public_eligible: false
   reset_strategy: copy-on-session
   network: terminal-only
-status: defined
+status: implemented-awaiting-qualification

@@ -1,0 +1,34 @@
+; UNIX Time Machine: UNIX Seventh Edition / PDP-11/70
+; Runtime tokens are replaced by scripts/utm.py. Do not run this template directly.
+set cpu 11/70
+set cpu 2M
+set cpu idle
+set clk 60Hz
+set lpt disabled
+set ptr disabled
+set ptp disabled
+set cr disabled
+set rk disabled
+set rl disabled
+set hk disabled
+set rx disabled
+set rq disabled
+set tq disabled
+set tm disabled
+set ts disabled
+set dz disabled
+set vh disabled
+set xq disabled
+set xu disabled
+set rp enabled
+set rp0 rp06
+set rp1 disabled
+set rp2 disabled
+set rp3 disabled
+set rp4 disabled
+set rp5 disabled
+set rp6 disabled
+set rp7 disabled
+set console log=@CONSOLE_LOG@
+attach rp0 @SESSION_DISK@
+boot rp0

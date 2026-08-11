@@ -1,11 +1,40 @@
 ---
+- name: Require a supported Debian-family host
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family == "Debian"
+    fail_msg: "M1 supports Debian-family hosts only; package and executable names must be qualified before adding another family."
+
+- name: Install M1 runtime packages
+  ansible.builtin.apt:
+    name:
+      - simh
+      - python3
+      - python3-yaml
+    state: present
+    update_cache: true
+
+- name: Create UNIX Time Machine service group
+  ansible.builtin.group:
+    name: unix-time-machine
+    system: true
+
+- name: Create UNIX Time Machine service account
+  ansible.builtin.user:
+    name: unix-time-machine
+    group: unix-time-machine
+    home: /srv/unix-time-machine
+    create_home: false
+    shell: /usr/sbin/nologin
+    system: true
+
 - name: Create canonical directories
   ansible.builtin.file:
     path: "/srv/unix-time-machine/{{ item }}"
     state: directory
     owner: root
-    group: root
-    mode: "0755"
+    group: unix-time-machine
+    mode: "0750"
   loop:
     - media
     - golden
@@ -14,3 +43,41 @@
     - snapshots
     - logs
     - reports
+
+- name: Create per-system M1 directories
+  ansible.builtin.file:
+    path: "/srv/unix-time-machine/{{ item }}"
+    state: directory
+    owner: root
+    group: unix-time-machine
+    mode: "2750"
+  loop:
+    - media/unix-v7-pdp11
+    - golden/unix-v7-pdp11
+
+- name: Allow the service account to create runtime state
+  ansible.builtin.file:
+    path: "/srv/unix-time-machine/{{ item }}"
+    state: directory
+    owner: unix-time-machine
+    group: unix-time-machine
+    mode: "2770"
+  loop:
+    - state
+    - sessions
+    - sessions/unix-v7-pdp11
+    - snapshots
+    - logs
+    - reports
+
+- name: Locate the packaged PDP-11 emulator
+  ansible.builtin.command: sh -c 'command -v pdp11'
+  register: utm_pdp11
+  changed_when: false
+  failed_when: false
+
+- name: Diagnose unexpected SIMH packaging
+  ansible.builtin.assert:
+    that:
+      - utm_pdp11.rc == 0
+    fail_msg: "The simh package was installed but no 'pdp11' executable is on PATH. This distro/package is not M1-qualified; do not guess an executable name."

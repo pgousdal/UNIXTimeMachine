@@ -1,0 +1,6 @@
+---
+- name: Provision UNIX Time Machine host foundation
+  hosts: all
+  become: true
+  roles:
+    - foundation

@@ -1,0 +1,26 @@
+id: unix-v7-pdp11
+name: UNIX Seventh Edition
+short_name: UNIX V7
+track: unix
+year: 1979
+vendor: Bell Laboratories
+family: Research UNIX
+machine:
+  vendor: Digital Equipment Corporation
+  model: PDP-11/70
+  cpu: PDP-11
+emulator:
+  family: simh
+  profile: pdp11
+terminal:
+  preferred: vt100
+  fallback: ansi
+media:
+  policy: external
+  directory: unix-v7-pdp11
+  required: []
+session:
+  public_eligible: false
+  reset_strategy: copy-on-session
+  network: terminal-only
+status: defined

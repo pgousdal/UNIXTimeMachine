@@ -1,0 +1,26 @@
+id: 43bsd-vax
+name: 4.3BSD
+short_name: 4.3BSD
+track: unix
+year: 1986
+vendor: University of California, Berkeley
+family: BSD
+machine:
+  vendor: Digital Equipment Corporation
+  model: VAX-11/780
+  cpu: VAX
+emulator:
+  family: simh
+  profile: vax
+terminal:
+  preferred: vt100
+  fallback: ansi
+media:
+  policy: external
+  directory: 43bsd-vax
+  required: []
+session:
+  public_eligible: false
+  reset_strategy: copy-on-session
+  network: terminal-only
+status: defined

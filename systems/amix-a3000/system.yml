@@ -1,0 +1,36 @@
+id: amix-a3000
+name: Commodore Amiga UNIX 2.1
+short_name: AMIX 2.1
+track: unix
+year: 1991
+vendor: Commodore
+family: UNIX System V Release 4
+machine:
+  vendor: Commodore
+  model: Amiga 3000
+  cpu: Motorola 68030
+  mmu_required: true
+  fpu: 68882-compatible
+emulator:
+  family: fs-uae
+  profile: a3000
+terminal:
+  preferred: vt100
+  fallback: ansi
+media:
+  policy: external
+  directory: amix-a3000
+  required:
+    - logical_name: boot-floppy
+      filename_hint: amix_21_boot.adf
+    - logical_name: root-floppy
+      filename_hint: amix_21_root.adf
+    - logical_name: patch-floppy
+      filename_hint: amix_21_patch.adf
+    - logical_name: install-tape
+      filename_hint: amix_21_tape
+session:
+  public_eligible: false
+  reset_strategy: copy-on-session
+  network: terminal-only
+status: defined

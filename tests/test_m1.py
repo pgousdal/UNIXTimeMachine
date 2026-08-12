@@ -78,14 +78,42 @@ class M1Tests(unittest.TestCase):
         with self.assertRaisesRegex(utmlib.UTMError, "incomplete"):
             utmlib.import_golden("unix-v7-pdp11", source, self.root)
         (source / "rp1.dsk").write_bytes(b"usr")
-        utmlib.import_golden("unix-v7-pdp11", source, self.root)
+        ownership = []
+        with mock.patch.object(utmlib, "golden_group_id", return_value=4242), \
+             mock.patch.object(utmlib.os, "chown",
+                               side_effect=lambda path, uid, gid: ownership.append((Path(path), uid, gid))):
+            utmlib.import_golden("unix-v7-pdp11", source, self.root)
         golden_dir = self.root / "golden" / "unix-v7-pdp11"
-        self.assertEqual((golden_dir / "rp0.dsk").stat().st_mode & 0o777, 0o440)
-        self.assertEqual((golden_dir / "rp1.dsk").stat().st_mode & 0o777, 0o440)
+        self.assertEqual(golden_dir.stat().st_mode & 0o777, 0o750)
+        for name in ("rp0.dsk", "rp1.dsk", "metadata.json"):
+            mode = (golden_dir / name).stat().st_mode & 0o777
+            self.assertEqual(mode, 0o440)
+            self.assertEqual(mode & 0o007, 0, "golden members must not be world-accessible")
+            self.assertNotEqual(mode & 0o040, 0, "enrolled operators need group read access")
+            self.assertEqual(mode & 0o222, 0, "golden members must be immutable to operators")
+        published = {path.name: (uid, gid) for path, uid, gid in ownership}
+        transaction_dirs = [(path, uid, gid) for path, uid, gid in ownership
+                            if path.name.startswith(".unix-v7-pdp11.import-")]
+        self.assertEqual(len(transaction_dirs), 1)
+        self.assertEqual(transaction_dirs[0][1:], (0, 4242))
+        self.assertEqual(published["rp0.dsk"], (0, 4242))
+        self.assertEqual(published["rp1.dsk"], (0, 4242))
+        self.assertEqual(published["metadata.json"], (0, 4242))
         metadata = __import__("json").loads((golden_dir / "metadata.json").read_text())
         self.assertEqual(set(metadata["disks"]), {"root", "usr"})
         with self.assertRaisesRegex(utmlib.UTMError, "overwrite"):
             utmlib.import_golden("unix-v7-pdp11", source, self.root)
+
+    def test_unreadable_golden_has_controlled_error_and_no_partial_session(self):
+        golden = self.root / "golden" / "unix-v7-pdp11"
+        golden.mkdir(parents=True)
+        (golden / "rp0.dsk").write_bytes(b"root")
+        (golden / "rp1.dsk").write_bytes(b"usr")
+        denied = PermissionError(13, "Permission denied", str(golden / "rp0.dsk"))
+        with mock.patch.object(utmlib, "sha256", side_effect=denied), \
+             self.assertRaisesRegex(utmlib.UTMError, "root:unix-time-machine.*group enrollment"):
+            utmlib.prepare_session("unix-v7-pdp11", "qualification-1", self.root)
+        self.assertFalse((self.root / "sessions/unix-v7-pdp11/qualification-1").exists())
 
     def test_unsafe_ids(self):
         for value in ("../escape", "/absolute", "UPPER", "a/b"):

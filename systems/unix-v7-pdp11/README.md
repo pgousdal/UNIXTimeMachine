@@ -217,8 +217,9 @@ not the 11/45 bootstrap. The tape is input only and is never imported.
 Only after the installed system has booted successfully from RP0 under
 `install-runtime.ini`, `/usr` from RP1 has been checked, and the guest has been
 cleanly synced and stopped may it be imported. Import is all-or-nothing, refuses
-partial sets and overwrite, records a SHA-256 for each disk, and makes both
-golden disks mode 0440:
+partial sets and overwrite, records a SHA-256 for each disk, and publishes the
+golden directory as `root:unix-time-machine` mode 0750 with its disks and
+metadata `root:unix-time-machine` mode 0440:
 
 ```sh
 sudo python3 scripts/utm.py golden import unix-v7-pdp11 "$STAGING"
@@ -259,7 +260,8 @@ python3 scripts/utm.py system ready unix-v7-pdp11 --session-id qualification-2 -
 ### PASS criteria
 
 - Golden creation: both RP06 staging files exist after a synced clean stop;
-  atomic import succeeds once; both golden files are 0440; metadata contains a
+  atomic import succeeds once; the golden tree has the documented root/operator
+  group ownership and immutable modes; metadata contains a
   SHA-256 for `root/rp0.dsk` and `usr/rp1.dsk`; neither golden is ever attached.
 - First disposable boot: the session contains both writable copies, runtime.ini
   attaches only those copies, `hp(0,0)unix` boots, `/usr` is mounted from RP1,

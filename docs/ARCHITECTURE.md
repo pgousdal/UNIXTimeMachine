@@ -27,9 +27,12 @@ members: RP0 (root and swap) and RP1 (`/usr`). The manifest's ordered
 `prepared.disks` structure is system-neutral and records each unit, device,
 golden/session filename, and runtime token. Golden import constructs the whole
 set in a sibling transaction directory, hashes every member, and publishes it
-with one rename; session preparation rejects incomplete sets and copies every
-member before publishing session metadata. The committed SIMH templates contain
-tokens only; the CLI resolves session-local absolute paths.
+with one rename. Before publication, the complete tree is set to root ownership,
+the `unix-time-machine` operator group, mode 0750 on its directory, and mode 0440
+on disks and metadata. Session preparation remains unprivileged, rejects
+incomplete sets, and copies every member before publishing session metadata.
+The committed SIMH templates contain tokens only; the CLI resolves session-local
+absolute paths.
 
 Persistent JSON is deterministic and atomically replaced. A foreground SIMH
 process retains the local terminal; PID/config/session metadata enables status

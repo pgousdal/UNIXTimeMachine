@@ -77,6 +77,14 @@ class ProvisioningContractTests(unittest.TestCase):
         self.assertTrue(user["append"])
         self.assertTrue(any("ansible.builtin.getent" in task for task in tasks))
 
+    def test_golden_publication_target_has_operator_read_only_ownership(self):
+        task = next(task for task in self.tasks
+                    if task.get("name") == "Create immutable golden publication target")
+        contract = task["ansible.builtin.file"]
+        self.assertEqual(contract["owner"], "root")
+        self.assertEqual(contract["group"], "unix-time-machine")
+        self.assertEqual(contract["mode"], "0750")
+
 
 if __name__ == "__main__":
     unittest.main()

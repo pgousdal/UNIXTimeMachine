@@ -10,6 +10,12 @@ terminal handoff, or secrets are part of M1. Run the operator CLI as the
 dedicated `unix-time-machine` account (or with equivalent group access), never
 as an untrusted guest-facing service.
 
+Golden sets are owned by root and readable only by the `unix-time-machine`
+group: directories use mode 0750 and disks/metadata use mode 0440. Operators
+must be explicitly enrolled in that group. Session preparation copies golden
+data without privilege escalation; neither operators nor guests receive golden
+write permission.
+
 Host provisioning uses TLS plus a pinned SHA-256 for one immutable Open SIMH
 source archive and Debian 13 packages from configured official host sources. It
 does not add repositories or execute downloaded installer scripts. The PDP-11

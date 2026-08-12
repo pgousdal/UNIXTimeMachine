@@ -12,7 +12,9 @@ they fail the canonical check even if named `v7.tap`.
 
 Golden import accepts only the complete manifest disk set from a staging
 directory outside `media/`, constructs and hashes it transactionally, refuses
-overwrite, and makes every disk group-readable but not writable. Session
+overwrite, and publishes the directory as `root:unix-time-machine` mode 0750
+with every disk and its metadata `root:unix-time-machine` mode 0440. Explicitly
+enrolled operators can read golden data but cannot modify it. Session
 preparation uses exclusive reflinks where supported and fully copied, fsynced
 fallbacks otherwise. It hashes every golden before and after copying and never
 publishes session metadata for a partial copy.

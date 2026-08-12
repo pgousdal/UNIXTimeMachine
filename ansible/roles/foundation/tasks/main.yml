@@ -151,7 +151,14 @@
     mode: "2750"
   loop:
     - media/unix-v7-pdp11
-    - golden/unix-v7-pdp11
+
+- name: Create immutable golden publication target
+  ansible.builtin.file:
+    path: /srv/unix-time-machine/golden/unix-v7-pdp11
+    state: directory
+    owner: root
+    group: unix-time-machine
+    mode: "0750"
 
 - name: Allow the service account to create runtime state
   ansible.builtin.file:

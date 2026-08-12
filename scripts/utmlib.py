@@ -1,12 +1,14 @@
 """Preservation-safe operator primitives for UNIX Time Machine."""
 from __future__ import annotations
 
+import grp
 import hashlib
 import json
 import os
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import time
 from dataclasses import dataclass
@@ -16,6 +18,7 @@ from manifestlib import system_manifest
 
 DEFAULT_ROOT = Path("/srv/unix-time-machine")
 SAFE_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+GOLDEN_GROUP = "unix-time-machine"
 
 
 class UTMError(RuntimeError):
@@ -119,6 +122,18 @@ def prepared_disks(manifest: dict) -> list[dict]:
     return disks
 
 
+def golden_group_id() -> int:
+    try:
+        return grp.getgrnam(GOLDEN_GROUP).gr_gid
+    except KeyError as exc:
+        raise UTMError(f"required golden-data group does not exist: {GOLDEN_GROUP}") from exc
+
+
+def set_golden_access(path: Path, mode: int, group_id: int) -> None:
+    os.chown(path, 0, group_id)
+    path.chmod(mode)
+
+
 def import_golden(system_id: str, source: Path, host_root: Path) -> tuple[Path, list[str]]:
     _, manifest = system_manifest(safe_id(system_id, "system id"))
     source = source.resolve(strict=True)
@@ -144,15 +159,17 @@ def import_golden(system_id: str, source: Path, host_root: Path) -> tuple[Path, 
     methods = []
     hashes = {}
     try:
+        group_id = golden_group_id()
+        set_golden_access(transaction, 0o750, group_id)
         for disk, disk_source in sources:
             target = transaction / disk["golden_filename"]
             methods.append(copy_exclusive(disk_source, target))
-            target.chmod(0o440)
+            set_golden_access(target, 0o440, group_id)
             hashes[disk["id"]] = {"filename": disk["golden_filename"], "sha256": sha256(target)}
         atomic_json(transaction / "metadata.json", {
             "disks": hashes, "source_path": str(source), "system_id": system_id
         })
-        (transaction / "metadata.json").chmod(0o440)
+        set_golden_access(transaction / "metadata.json", 0o440, group_id)
         if destination.exists():
             destination.rmdir()  # only an empty provisioning-era directory is removable
         os.replace(transaction, destination)
@@ -168,10 +185,25 @@ def prepare_session(system_id: str, session_id: str, host_root: Path) -> tuple[P
     disks = prepared_disks(manifest)
     golden_dir = host_root / "golden" / system_id
     goldens = [(disk, golden_dir / disk["golden_filename"]) for disk in disks]
-    missing = [str(path) for _, path in goldens if not path.is_file()]
+    try:
+        missing = [str(path) for _, path in goldens
+                   if not stat.S_ISREG(path.stat().st_mode)]
+    except FileNotFoundError:
+        missing = [str(path) for _, path in goldens if not path.is_file()]
+    except PermissionError as exc:
+        raise UTMError(
+            f"golden disk set is not accessible; verify root:{GOLDEN_GROUP} ownership, "
+            "0750 directory mode, 0440 file modes, and operator group enrollment"
+        ) from exc
     if missing:
         raise UTMError("incomplete golden disk set; missing: " + ", ".join(missing))
-    before = {disk["id"]: sha256(path) for disk, path in goldens}
+    try:
+        before = {disk["id"]: sha256(path) for disk, path in goldens}
+    except PermissionError as exc:
+        raise UTMError(
+            f"golden disk set is not readable; verify root:{GOLDEN_GROUP} ownership, "
+            "0750 directory mode, 0440 file modes, and operator group enrollment"
+        ) from exc
     workspace = host_root / "sessions" / system_id / session_id
     if workspace.exists():
         raise UTMError(f"refusing to overwrite existing session: {workspace}")
@@ -182,11 +214,17 @@ def prepare_session(system_id: str, session_id: str, host_root: Path) -> tuple[P
     transaction.mkdir(mode=0o750)
     try:
         methods = []
-        for disk, golden in goldens:
-            destination = transaction / disk["session_filename"]
-            methods.append(copy_exclusive(golden, destination))
-            destination.chmod(0o640)
-        after = {disk["id"]: sha256(path) for disk, path in goldens}
+        try:
+            for disk, golden in goldens:
+                destination = transaction / disk["session_filename"]
+                methods.append(copy_exclusive(golden, destination))
+                destination.chmod(0o640)
+            after = {disk["id"]: sha256(path) for disk, path in goldens}
+        except PermissionError as exc:
+            raise UTMError(
+                f"golden disk set became unreadable; verify root:{GOLDEN_GROUP} ownership, "
+                "0750 directory mode, 0440 file modes, and operator group enrollment"
+            ) from exc
         if before != after:
             raise UTMError("preservation invariant violated: golden disk set changed during copy")
         atomic_json(transaction / "session.json", {

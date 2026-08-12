@@ -1,6 +1,8 @@
 ; UNIX Time Machine: HUMAN_REQUIRED installed-system verification phase
 ; Run only after completing and syncing the tape/bootstrap phase, then quitting SIMH.
 ; The same two staging RP06 images are retained while the CPU changes to runtime.
+; After boot rp0, V7 hpuboot is silent: type boot and Return.  At the Boot/: prompt
+; from /boot, type hp(0,0)unix and Return.
 set cpu 11/70
 set cpu 2M
 set cpu idle

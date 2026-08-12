@@ -8,8 +8,10 @@ The runtime is a PDP-11/70 with 2 MiB, an RH70-class MASSBUS attachment as
 represented by Open SIMH's `RP` device, and two RP06 units. RP0 contains V7 root
 on `hp(0,0)` and swap on its partition 1. RP1 contains `/usr` on its partition 7;
 the restored V7 name for that device is `/dev/rp3` (block major 6, minor 15),
-despite the host emulator unit being RP1. Boot is from RP0, followed at the boot
-prompt by `hp(0,0)unix`. Both disks remain required at runtime.
+despite the host emulator unit being RP1. Boot is from RP0; at the initially
+blank console enter `boot` for the silent first-stage `hpuboot`, then enter
+`hp(0,0)unix` at the second-stage `Boot`/`:` prompt. Both disks remain required
+at runtime.
 
 This is Model B. Installation and runtime are deliberately distinct phases. The
 tape bootstrap and standalone programs run on the cited Open SIMH procedure's
@@ -199,9 +201,13 @@ at once. Start a fresh SIMH process for the explicit hardware transition:
 ```
 
 This phase keeps both RP06 files but changes to the normal PDP-11/70 with 2 MiB;
-the tape is disabled. At `Boot`/`:` type `hp(0,0)unix`. Expect approximately
-`mem = 2020544` followed by `#`. Press Ctrl-D, log in as `root` with password
-`root`, verify `/usr` is mounted from the second RP06 and run filesystem checks.
+the tape is disabled. The console is initially blank because the installed
+476-byte `hpuboot` has no prompt: type `boot` and press Return. `hpuboot` looks
+up that pathname in the root directory and loads `/boot`; it does not load
+inode 317 or any other fixed inode. At the resulting `Boot`/`:` prompt type
+`hp(0,0)unix` and press Return. Expect approximately `mem = 2020544` followed
+by `#`. Press Ctrl-D, log in as `root` with password `root`, verify `/usr` is
+mounted from the second RP06 and run filesystem checks.
 Run `sync` four times, Ctrl-E, and `quit`. The exact observed memory value may
 vary slightly with the installed kernel, but it must reflect the 2 MiB runtime,
 not the 11/45 bootstrap. The tape is input only and is never imported.
@@ -227,8 +233,10 @@ python3 scripts/utm.py session prepare unix-v7-pdp11 --session-id qualification-
 python3 scripts/utm.py system start unix-v7-pdp11 --session-id qualification-1
 ```
 
-At the SIMH prompt type `boot`; at `Boot`/`:` type `hp(0,0)unix`; press Ctrl-D
-from single-user mode to enter multi-user mode. In another terminal:
+After the generated configuration executes SIMH `boot rp0`, the guest console
+is blank. Type `boot` and press Return for `hpuboot`; at the resulting
+`Boot`/`:` prompt type `hp(0,0)unix` and press Return. Press Ctrl-D from
+single-user mode to enter multi-user mode. In another terminal:
 
 ```sh
 python3 scripts/utm.py system ready unix-v7-pdp11 --session-id qualification-1 --timeout 120

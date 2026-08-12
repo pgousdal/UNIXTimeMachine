@@ -160,6 +160,8 @@ class M1Tests(unittest.TestCase):
         self.assertIn(str(tape), bootstrap_text)
         self.assertIn("set tm disabled", runtime_text)
         self.assertNotIn("attach -r tm0", runtime_text)
+        self.assertIn("V7 hpuboot is silent: type boot and Return", runtime_text)
+        self.assertIn("type hp(0,0)unix and Return", runtime_text)
         self.assertFalse((self.root / "media/unix-v7-pdp11/rp0.dsk").exists())
         for protected in (self.root / "media/staging", self.root / "golden/staging"):
             with self.assertRaisesRegex(utmlib.UTMError, "outside"):

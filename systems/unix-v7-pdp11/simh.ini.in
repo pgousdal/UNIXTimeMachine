@@ -1,5 +1,7 @@
 ; UNIX Time Machine: UNIX Seventh Edition / PDP-11/70
 ; Runtime tokens are replaced by scripts/utm.py. Do not run this template directly.
+; After boot rp0, V7 hpuboot is silent: type boot and Return.  At the Boot/: prompt
+; from /boot, type hp(0,0)unix and Return.
 set cpu 11/70
 set cpu 2M
 set cpu idle

@@ -1,6 +1,6 @@
 # UNIX V7 / PDP-11/70 (M1)
 
-Status: **IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION**.
+Status: **IMPLEMENTED / AWAITING REAL-HOST REQUALIFICATION**.
 
 ## Machine definition and assumptions
 
@@ -14,13 +14,19 @@ hardware and the V7 installation convention used by the primary procedure.
 These choices follow the Open SIMH PDP-11 simulator documentation and the Open
 SIMH *Installing and Using Research Unix Version 7* guide, whose normal-boot
 profile uses an 11/70, 2 MiB, RP06, and direct RP boot. `set cpu idle` is an
-emulator host-efficiency decision, not additional guest hardware. Debian's
-packaged executable is expected to be `pdp11`; provisioning fails explicitly if
-that is not true. References:
+emulator host-efficiency decision, not additional guest hardware. Debian 13 has
+no official `simh` package: it was removed from testing before Trixie released.
+Provisioning therefore builds Open SIMH's signed v3.12-3 tag at full commit
+`9d2bbe7c3271cfe57400ba9e8e3679f9f6b5944d`; the upstream archive SHA-256 is
+`0cc28f8fee3348dca3c42ab5406393ad1e78a7716085fcc24d7ddfb189082481`.
+Only `pdp11` is built, with `NONETWORK=1`, and installed at
+`/opt/unix-time-machine/simh/v3.12-3/pdp11`. References:
 
 - https://opensimh.org/simdocs/pdp11_doc.html
 - https://opensimh.org/research-unix-7-pdp11-45-v2.0.pdf
-- https://packages.debian.org/bookworm/simh
+- https://github.com/open-simh/simh/tree/v3.12-3
+- https://packages.debian.org/search?keywords=simh
+- https://tracker.debian.org/news/1553687/simh-removed-from-testing/
 
 The media manifest accepts `v7.tap` or `unix-v7.tap` as operator conventions.
 Its size and SHA-256 are deliberately unpinned: no canonical identity has yet
@@ -35,12 +41,20 @@ directories (for example via the `unix-time-machine` group).
 
 ```sh
 sudo apt-get install ansible
-(cd ansible && sudo ansible-playbook playbooks/site.yml)
-python3 scripts/utm.py doctor
+make check
+python3 scripts/utm.py doctor       # clean-host failures are expected
+make provision
+python3 scripts/utm.py doctor       # all host checks must pass
+python3 scripts/utm.py catalog
+python3 scripts/utm.py media verify unix-v7-pdp11
+make qualify
 ```
 
 Log out/in after adding an operator to the service group if needed. Do not run
-SIMH as an untrusted user.
+SIMH as an untrusted user. `make qualify` combines repository checks, host
+doctor, honest media verification, and a reminder for manual boots; these gates
+remain distinct. Missing historical media is expected until section B and is
+not repaired by provisioning.
 
 ### B. Place legally obtained media
 

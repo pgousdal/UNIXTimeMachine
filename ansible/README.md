@@ -1,15 +1,29 @@
 # Ansible host provisioning
 
-On the supported Debian-family host:
+From the repository root on the supported Debian 13 (Trixie) host:
 
 ```sh
-cd ansible
-sudo ansible-playbook playbooks/site.yml
+sudo apt-get install ansible
+make provision
 ```
 
-The idempotent role installs Debian's `simh`, Python 3 and PyYAML packages,
-creates the non-login `unix-time-machine` account/group and protected canonical
-directories, and fails with a diagnostic if `pdp11` is not on PATH. It installs
-no historical media. Debian is the M1 qualification base; Ubuntu is accepted as
-Debian-family only where its repositories provide the same package/executable,
-and the post-install assertion prevents silent guessing.
+This target supplies the repository's absolute Ansible configuration, inventory,
+role path, and playbook; global Ansible configuration is not part of the contract.
+The equivalent direct invocation is:
+
+```sh
+ANSIBLE_CONFIG="$PWD/ansible/ansible.cfg" ansible-playbook \
+  -i "$PWD/ansible/inventory/localhost.yml" \
+  "$PWD/ansible/playbooks/site.yml" --ask-become-pass
+```
+
+The idempotent role installs explicit build dependencies, downloads the pinned
+Open SIMH source archive with SHA-256 verification, builds only `pdp11` with
+host networking disabled, installs it at the project-selected absolute path,
+records provenance, removes the build tree, and creates the service account and
+protected directories. The verified source archive remains in the controlled
+system cache for auditing/reprovisioning. It installs no historical media.
+
+No other Debian release, Ubuntu release, or other distribution is currently
+claimed as qualified. Do not add Bookworm, testing, unstable, or third-party
+binary repositories to provision this baseline.

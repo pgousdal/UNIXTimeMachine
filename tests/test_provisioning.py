@@ -1,0 +1,70 @@
+import re
+import unittest
+from pathlib import Path
+
+import yaml
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class ProvisioningContractTests(unittest.TestCase):
+    def setUp(self):
+        self.defaults = yaml.safe_load(
+            (ROOT / "ansible/roles/foundation/defaults/main.yml").read_text()
+        )
+        self.tasks = yaml.safe_load(
+            (ROOT / "ansible/roles/foundation/tasks/main.yml").read_text()
+        )
+
+    def test_simh_source_is_immutable_and_integrity_pinned(self):
+        commit = self.defaults["utm_simh_commit"]
+        digest = self.defaults["utm_simh_archive_sha256"]
+        self.assertRegex(commit, r"^[0-9a-f]{40}$")
+        self.assertRegex(digest, r"^[0-9a-f]{64}$")
+        self.assertIn("{{ utm_simh_commit }}", self.defaults["utm_simh_archive_url"])
+        self.assertNotRegex(self.defaults["utm_simh_archive_url"], r"/(master|main|HEAD)(?:[./]|$)")
+        get_urls = [task["ansible.builtin.get_url"] for task in self.tasks
+                    if "ansible.builtin.get_url" in task]
+        self.assertEqual(get_urls[0]["checksum"], "sha256:{{ utm_simh_archive_sha256 }}")
+
+    def test_debian_13_source_build_replaces_unavailable_binary_package(self):
+        assertion = self.tasks[0]["ansible.builtin.assert"]["that"]
+        self.assertIn('ansible_distribution == "Debian"', assertion)
+        self.assertIn('ansible_distribution_major_version == "13"', assertion)
+        apt = next(task["ansible.builtin.apt"] for task in self.tasks
+                   if "ansible.builtin.apt" in task)
+        for dependency in ("ca-certificates", "gcc", "gzip", "libc6-dev", "make", "tar"):
+            self.assertIn(dependency, apt["name"])
+        self.assertNotIn("simh", apt["name"])
+        self.assertFalse(any("ansible.builtin.apt_repository" in task for task in self.tasks))
+
+    def test_build_is_minimal_networkless_and_idempotency_guarded(self):
+        build = next(task for task in self.tasks
+                     if task.get("name") == "Build and install the pinned PDP-11 simulator")
+        self.assertEqual(build["when"], "not utm_simh_install_current")
+        command = next(task["ansible.builtin.command"] for task in build["block"]
+                       if task.get("name", "").startswith("Build only"))
+        self.assertEqual(command["argv"], ["make", "pdp11", "NONETWORK=1"])
+        cleanup = build["always"][0]["ansible.builtin.file"]
+        self.assertEqual(cleanup["state"], "absent")
+
+    def test_canonical_provision_entry_point_owns_ansible_resolution(self):
+        makefile = (ROOT / "Makefile").read_text()
+        recipe = re.search(r"^provision:\n((?:\t.*\n)+)", makefile, re.MULTILINE)
+        self.assertIsNotNone(recipe)
+        command = recipe.group(1)
+        self.assertIn("ANSIBLE_CONFIG=$(ANSIBLE_CONFIG_FILE)", command)
+        self.assertIn("-i $(ANSIBLE_INVENTORY)", command)
+        self.assertIn("$(ANSIBLE_PLAYBOOK)", command)
+        config = (ROOT / "ansible/ansible.cfg").read_text()
+        self.assertRegex(config, r"(?m)^roles_path = roles$")
+
+    def test_manifest_and_provisioning_agree_on_canonical_binary(self):
+        manifest = yaml.safe_load((ROOT / "systems/unix-v7-pdp11/system.yml").read_text())
+        expected = self.defaults["utm_simh_prefix"] + "/pdp11"
+        expected = expected.replace("{{ utm_simh_version }}", self.defaults["utm_simh_version"])
+        self.assertEqual(manifest["emulator"]["executable"], expected)
+
+
+if __name__ == "__main__":
+    unittest.main()

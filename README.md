@@ -17,15 +17,20 @@ The first milestone establishes the repository contract and three reference syst
 See `docs/ROADMAP.md`, `docs/ARCHITECTURE.md`, `docs/PRESERVATION.md`, `docs/SECURITY.md`, and `docs/LEGAL.md`.
 
 M1 implements the first operator-controlled exhibit: UNIX Seventh Edition on a
-SIMH PDP-11/70. It is **IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION**. No
+SIMH PDP-11/70. Its supported host baseline is Debian 13 (Trixie). It is
+**IMPLEMENTED / AWAITING REAL-HOST REQUALIFICATION**. No
 historical media is included, and repository tests do not claim that UNIX booted.
 
 ```sh
 make check
-(cd ansible && sudo ansible-playbook playbooks/site.yml)
-python3 scripts/utm.py doctor
+python3 scripts/utm.py doctor       # expected to fail on a clean host
+make provision
+python3 scripts/utm.py doctor       # expected host PASS
+python3 scripts/utm.py catalog
 python3 scripts/utm.py media verify unix-v7-pdp11
+make qualify
 ```
 
-The exact acquisition, manual installation, two-boot qualification, and teardown
-procedure is in `systems/unix-v7-pdp11/README.md`.
+`media verify` remains `MISSING` until the operator supplies lawful historical
+media; provisioning never downloads it. The exact manual installation, two-boot
+qualification, and teardown procedure is in `systems/unix-v7-pdp11/README.md`.

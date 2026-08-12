@@ -1,18 +1,121 @@
 ---
-- name: Require a supported Debian-family host
+- name: Require the qualified Debian 13 host baseline
   ansible.builtin.assert:
     that:
       - ansible_os_family == "Debian"
-    fail_msg: "M1 supports Debian-family hosts only; package and executable names must be qualified before adding another family."
+      - ansible_distribution == "Debian"
+      - ansible_distribution_major_version == "13"
+    fail_msg: "M1 host provisioning is qualified only for Debian 13 (Trixie); qualify another release before broadening this assertion."
 
-- name: Install M1 runtime packages
+- name: Install M1 runtime and explicit SIMH build dependencies
   ansible.builtin.apt:
     name:
-      - simh
+      - ca-certificates
+      - gcc
+      - gzip
+      - libc6-dev
+      - make
       - python3
       - python3-yaml
+      - tar
     state: present
     update_cache: true
+
+- name: Create controlled SIMH source cache
+  ansible.builtin.file:
+    path: /var/cache/unix-time-machine
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Fetch the pinned Open SIMH source archive
+  ansible.builtin.get_url:
+    url: "{{ utm_simh_archive_url }}"
+    dest: "{{ utm_simh_archive }}"
+    checksum: "sha256:{{ utm_simh_archive_sha256 }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Inspect installed SIMH provenance
+  ansible.builtin.stat:
+    path: "{{ utm_simh_provenance }}"
+  register: utm_simh_provenance_stat
+
+- name: Inspect installed SIMH executable
+  ansible.builtin.stat:
+    path: "{{ utm_simh_executable }}"
+  register: utm_simh_executable_stat
+
+- name: Read installed SIMH provenance
+  ansible.builtin.slurp:
+    path: "{{ utm_simh_provenance }}"
+  register: utm_simh_installed_provenance
+  when: utm_simh_provenance_stat.stat.exists
+
+- name: Decide whether the pinned SIMH build is installed
+  ansible.builtin.set_fact:
+    utm_simh_expected_provenance: "{{ lookup('ansible.builtin.template', 'PROVENANCE.j2') }}"
+    utm_simh_install_current: >-
+      {{ utm_simh_provenance_stat.stat.exists and
+         utm_simh_executable_stat.stat.exists and utm_simh_executable_stat.stat.executable and
+         (utm_simh_installed_provenance.content | b64decode) == lookup('ansible.builtin.template', 'PROVENANCE.j2') }}
+  changed_when: false
+
+- name: Build and install the pinned PDP-11 simulator
+  when: not utm_simh_install_current
+  block:
+    - name: Create isolated SIMH build directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: utm-simh-build-
+      register: utm_simh_build
+
+    - name: Extract verified SIMH source
+      ansible.builtin.unarchive:
+        src: "{{ utm_simh_archive }}"
+        dest: "{{ utm_simh_build.path }}"
+        remote_src: true
+
+    - name: Build only the PDP-11 simulator without host networking support
+      ansible.builtin.command:
+        argv:
+          - make
+          - pdp11
+          - NONETWORK=1
+        chdir: "{{ utm_simh_build.path }}/simh-{{ utm_simh_commit }}"
+
+    - name: Create versioned SIMH installation directory
+      ansible.builtin.file:
+        path: "{{ utm_simh_prefix }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install the canonical PDP-11 executable
+      ansible.builtin.copy:
+        src: "{{ utm_simh_build.path }}/simh-{{ utm_simh_commit }}/BIN/pdp11"
+        dest: "{{ utm_simh_executable }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Record exact SIMH build provenance
+      ansible.builtin.copy:
+        content: "{{ utm_simh_expected_provenance }}"
+        dest: "{{ utm_simh_provenance }}"
+        owner: root
+        group: root
+        mode: "0644"
+  always:
+    - name: Remove isolated SIMH source and build tree
+      ansible.builtin.file:
+        path: "{{ utm_simh_build.path }}"
+        state: absent
+      when: utm_simh_build.path is defined
 
 - name: Create UNIX Time Machine service group
   ansible.builtin.group:
@@ -70,14 +173,10 @@
     - logs
     - reports
 
-- name: Locate the packaged PDP-11 emulator
-  ansible.builtin.command: sh -c 'command -v pdp11'
+- name: Verify the canonical PDP-11 emulator is runnable
+  ansible.builtin.command:
+    argv:
+      - "{{ utm_simh_executable }}"
+      - -v
   register: utm_pdp11
   changed_when: false
-  failed_when: false
-
-- name: Diagnose unexpected SIMH packaging
-  ansible.builtin.assert:
-    that:
-      - utm_pdp11.rc == 0
-    fail_msg: "The simh package was installed but no 'pdp11' executable is on PATH. This distro/package is not M1-qualified; do not guess an executable name."

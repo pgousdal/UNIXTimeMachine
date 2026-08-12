@@ -13,8 +13,7 @@ machine:
 emulator:
   family: simh
   profile: pdp11
-  executables:
-    - pdp11
+  executable: /opt/unix-time-machine/simh/v3.12-3/pdp11
   configuration: simh.ini.in
   boot_device: RP0
   disk:

@@ -14,3 +14,9 @@ uses an exclusive reflink when the filesystem supports it and a fully copied,
 fsynced fallback otherwise. It hashes the golden before and after copying and
 never overwrites a session. Discard only the named session directory after SIMH
 has stopped; the CLI intentionally has no recursive discard command in M1.
+
+Open-source emulator provenance is independently pinned: the installed PDP-11
+binary has a root-owned `PROVENANCE` record naming upstream, version, full
+commit, source URL, source SHA-256, target, and build options. This does not
+authenticate or alter operator-supplied UNIX media and must not be confused with
+a historical-media verification result.

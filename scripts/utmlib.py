@@ -179,11 +179,13 @@ def render_runtime(system_id: str, session_id: str, host_root: Path) -> Path:
 
 
 def find_emulator(manifest: dict) -> str:
-    for name in manifest["emulator"].get("executables", []):
-        path = shutil.which(name)
-        if path:
-            return path
-    raise UTMError(f"missing SIMH executable; tried: {', '.join(manifest['emulator'].get('executables', []))}")
+    configured = manifest["emulator"].get("executable")
+    if not configured or not Path(configured).is_absolute():
+        raise UTMError("SIMH manifest must select an absolute executable path")
+    path = Path(configured)
+    if not path.is_file() or not os.access(path, os.X_OK):
+        raise UTMError(f"missing or non-executable SIMH executable: {path}")
+    return str(path)
 
 
 def readiness(log_path: Path, patterns: list[str], timeout: float, poll: float = 0.2) -> tuple[str, str]:

@@ -5,12 +5,16 @@ import sys
 import tempfile
 import time
 import unittest
+from argparse import Namespace
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import utmlib
+import utm as utm_cli
 from manifestlib import system_manifest
 
 
@@ -80,9 +84,41 @@ class M1Tests(unittest.TestCase):
         self.assertNotIn("@SESSION_DISK@", text)
 
     def test_missing_simh_executable(self):
-        with mock.patch.object(utmlib.shutil, "which", return_value=None):
-            with self.assertRaisesRegex(utmlib.UTMError, "missing SIMH"):
-                utmlib.find_emulator(self.manifest())
+        manifest = self.manifest()
+        manifest["emulator"]["executable"] = str(self.root / "missing-pdp11")
+        with self.assertRaisesRegex(utmlib.UTMError, "missing or non-executable SIMH"):
+            utmlib.find_emulator(manifest)
+
+    def test_simh_uses_only_canonical_absolute_executable(self):
+        emulator = self.root / "pdp11"
+        emulator.write_text("#!/bin/sh\nexit 0\n")
+        emulator.chmod(0o755)
+        manifest = self.manifest()
+        manifest["emulator"]["executable"] = str(emulator)
+        with mock.patch.dict(os.environ, {"PATH": str(self.root)}):
+            self.assertEqual(utmlib.find_emulator(manifest), str(emulator))
+        manifest["emulator"]["executable"] = "pdp11"
+        with self.assertRaisesRegex(utmlib.UTMError, "absolute"):
+            utmlib.find_emulator(manifest)
+
+    def test_doctor_runs_canonical_simh_and_reports_success(self):
+        emulator = self.root / "canonical-pdp11"
+        emulator.write_text("#!/bin/sh\necho 'PDP-11 simulator V3.12-3'\n")
+        emulator.chmod(0o755)
+        output = StringIO()
+        with mock.patch.object(utm_cli, "find_emulator", return_value=str(emulator)):
+            with redirect_stdout(output):
+                # Missing host directories still make the overall clean-host check fail.
+                self.assertEqual(utm_cli.cmd_doctor(Namespace(root=str(self.root))), 1)
+        self.assertIn(f"PASS    SIMH executable {emulator} is runnable", output.getvalue())
+
+    def test_doctor_reports_missing_canonical_simh(self):
+        output = StringIO()
+        error = utmlib.UTMError("missing or non-executable SIMH executable: /canonical/pdp11")
+        with mock.patch.object(utm_cli, "find_emulator", side_effect=error):
+            with redirect_stdout(output):
+                self.assertEqual(utm_cli.cmd_doctor(Namespace(root=str(self.root))), 1)
+        self.assertIn("FAIL    missing or non-executable SIMH executable", output.getvalue())
 
     def test_bounded_readiness(self):
         start = time.monotonic()

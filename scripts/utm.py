@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import grp
 import os
+import pwd
 import subprocess
 import sys
 from pathlib import Path
@@ -22,14 +24,40 @@ def root_path(args):
 def cmd_doctor(args):
     failures = 0
     root = root_path(args)
-    for directory in ("media", "golden", "state", "sessions", "logs", "reports"):
+    directory_contract = {
+        "media": ("root", "unix-time-machine", 0o750),
+        "golden": ("root", "unix-time-machine", 0o750),
+        "state": ("unix-time-machine", "unix-time-machine", 0o2770),
+        "sessions": ("unix-time-machine", "unix-time-machine", 0o2770),
+        "snapshots": ("unix-time-machine", "unix-time-machine", 0o2770),
+        "logs": ("unix-time-machine", "unix-time-machine", 0o2770),
+        "reports": ("unix-time-machine", "unix-time-machine", 0o2770),
+    }
+    for directory, (owner, group, mode) in directory_contract.items():
         path = root / directory
-        status = "PASS" if path.is_dir() else "FAIL"
+        detail = ""
+        status = "FAIL"
+        if path.is_dir():
+            stat = path.stat()
+            actual_owner = pwd.getpwuid(stat.st_uid).pw_name
+            actual_group = grp.getgrgid(stat.st_gid).gr_name
+            actual_mode = stat.st_mode & 0o7777
+            if (actual_owner, actual_group, actual_mode) == (owner, group, mode):
+                status = "PASS"
+            else:
+                detail = (f" (expected {owner}:{group} {mode:04o}; found "
+                          f"{actual_owner}:{actual_group} {actual_mode:04o})")
         failures += status == "FAIL"
-        print(f"{status:7} directory {path}")
+        print(f"{status:7} directory {path}{detail}")
     try:
         _, manifest = system_manifest("unix-v7-pdp11")
-        print(f"PASS    SIMH executable {find_emulator(manifest)}")
+        emulator = find_emulator(manifest)
+        result = subprocess.run([emulator, "-v"], stdin=subprocess.DEVNULL,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, timeout=10)
+        if result.returncode != 0:
+            raise UTMError(f"SIMH executable is not runnable: {emulator} (exit {result.returncode})")
+        print(f"PASS    SIMH executable {emulator} is runnable")
     except (ValueError, UTMError) as exc:
         failures += 1
         print(f"FAIL    {exc}")

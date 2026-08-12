@@ -49,7 +49,7 @@ integration. The qualified M1 commands remain supported.
 python3 scripts/utm.py broker config
 python3 scripts/utm.py broker request unix-v7-pdp11
 python3 scripts/utm.py broker list
-python3 scripts/utm.py broker attach SESSION_ID   # Ctrl-] detach; Ctrl-E reaches SIMH
+python3 scripts/utm.py broker attach SESSION_ID   # first attach starts readiness; Ctrl-] detaches
 python3 scripts/utm.py broker status SESSION_ID
 python3 scripts/utm.py broker stop SESSION_ID     # sync the guest first
 python3 scripts/utm.py broker release SESSION_ID  # idempotent after automatic release
@@ -60,3 +60,10 @@ Defaults are explicit in `broker/config.py`; an operator may override them with
 `/srv/unix-time-machine/state/broker-config.json` using the exact keys printed
 by `broker config`. M2 must not be marked complete until the real-host gate in
 `docs/ROADMAP.md` has been observed.
+
+UNIX V7 is operator-booted: after attach, enter `boot`, then `hp(0,0)unix`, then
+Ctrl-D. The readiness deadline begins with that first successful attach, not
+with emulator launch. Idle and absolute deadlines still bound an abandoned
+request. Sync the guest before an explicit broker stop; automatic deadline
+failures never inject a shutdown sequence and preserve the workspace and
+emulator for inspection.

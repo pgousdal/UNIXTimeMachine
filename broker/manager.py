@@ -179,11 +179,15 @@ class Broker:
     def attach(self, session_id: str, stdin_fd=0, stdout_fd=1) -> None:
         record = self.get(session_id)
         if record.state not in {SessionState.STARTING.value, SessionState.READY.value,
-                                SessionState.ACTIVE.value, SessionState.FAILED.value}:
+                                SessionState.ACTIVE.value}:
             raise UTMError(f"session is not attachable in state {record.state}")
+        if not record.socket_path:
+            raise UTMError("local console unavailable: session has no console transport")
         client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try: client.connect(record.socket_path)
-        except OSError as exc: raise UTMError(f"local console unavailable: {exc}") from exc
+        except OSError as exc:
+            client.close()
+            raise UTMError("local console unavailable; supervisor socket is missing or inaccessible") from exc
         client.setblocking(False)
         selector = selectors.DefaultSelector(); selector.register(client, selectors.EVENT_READ, "socket")
         selector.register(stdin_fd, selectors.EVENT_READ, "input")

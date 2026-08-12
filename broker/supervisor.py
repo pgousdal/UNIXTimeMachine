@@ -32,6 +32,7 @@ class Supervisor:
         self.started = time.monotonic()
         self.ready = False
         self.failed = False
+        self.readiness_deadline = None
 
     def update(self, **changes):
         with self.store.locked():
@@ -84,17 +85,6 @@ class Supervisor:
         try:
             while True:
                 now = time.monotonic()
-                elapsed = now - self.started
-                if not self.failed and not self.ready and elapsed >= self.config.readiness_timeout and not self.stop_requested:
-                    self.store.audit("readiness_result", self.store.load(self.session_id), {"result": "timeout"})
-                    self.store.audit("timeout", self.store.load(self.session_id), {"kind": "readiness"})
-                    self.stop_requested = True; self.stop_reason = "readiness-timeout"
-                if not self.failed and elapsed >= self.config.absolute_timeout and not self.stop_requested:
-                    self.store.audit("timeout", self.store.load(self.session_id), {"kind": "absolute"})
-                    self.stop_requested = True; self.stop_reason = "absolute-timeout"
-                if not self.failed and now - self.last_activity >= self.config.idle_timeout and not self.stop_requested:
-                    self.store.audit("timeout", self.store.load(self.session_id), {"kind": "idle"})
-                    self.stop_requested = True; self.stop_reason = "idle-timeout"
                 if self.stop_requested and shutdown_deadline is None:
                     current = self.store.load(self.session_id)
                     if current.state in {SessionState.STARTING.value, SessionState.READY.value,
@@ -124,7 +114,13 @@ class Supervisor:
                                 self.transition(SessionState.ACTIVE, "attach")
                             else:
                                 self.store.audit("attach", self.store.load(self.session_id))
-                            self.update(attached_at=utc_now(), last_activity_at=utc_now())
+                            changes = {"attached_at": utc_now(), "last_activity_at": utc_now()}
+                            if state == SessionState.STARTING.value and self.readiness_deadline is None:
+                                changes["readiness_started_at"] = utc_now()
+                                self.readiness_deadline = now + self.config.readiness_timeout
+                                self.store.audit("readiness_begin", self.store.load(self.session_id),
+                                                 {"trigger": "first-attach"})
+                            self.update(**changes)
                     elif key.data == "console":
                         try: data = os.read(master, 65536)
                         except OSError as exc:
@@ -137,8 +133,12 @@ class Supervisor:
                                 try: self.attached.sendall(data)
                                 except OSError: self.detach(selector)
                             if not self.ready and any(pattern.encode() in tail for pattern in spec["patterns"]):
-                                self.ready = True; self.transition(SessionState.READY, "readiness_result", {"result": "pass"})
+                                self.ready = True
+                                self.transition(SessionState.READY, "readiness_result", {"result": "pass"})
                                 self.update(ready_at=utc_now())
+                                if self.attached is not None:
+                                    self.transition(SessionState.ACTIVE, "activate",
+                                                    {"reason": "ready-while-attached"})
                         else:
                             try: selector.unregister(master)
                             except Exception: pass
@@ -152,6 +152,51 @@ class Supervisor:
                         else:
                             os.write(master, data); self.last_activity = now
                             self.update(last_activity_at=utc_now())
+                # Consume all console events selected at the boundary before deciding that
+                # readiness lost the race. Also drain bytes that became readable after the
+                # selector snapshot, so a marker already emitted at the boundary wins.
+                now = time.monotonic()
+                elapsed = now - self.started
+                if (not self.ready and self.readiness_deadline is not None
+                        and now >= self.readiness_deadline):
+                    try: boundary_data = os.read(master, 65536)
+                    except BlockingIOError: boundary_data = b""
+                    except OSError as exc:
+                        if exc.errno == errno.EIO: boundary_data = b""
+                        else: raise
+                    if boundary_data:
+                        transcript.write(boundary_data)
+                        tail = (tail + boundary_data)[-16384:]
+                        self.last_activity = now; self.update(last_activity_at=utc_now())
+                        if self.attached is not None:
+                            try: self.attached.sendall(boundary_data)
+                            except OSError: self.detach(selector)
+                        if any(pattern.encode() in tail for pattern in spec["patterns"]):
+                            self.ready = True
+                            self.transition(SessionState.READY, "readiness_result", {"result": "pass"})
+                            self.update(ready_at=utc_now())
+                            if self.attached is not None:
+                                self.transition(SessionState.ACTIVE, "activate",
+                                                {"reason": "ready-while-attached"})
+                timeout_kind = None
+                if (not self.failed and not self.ready and self.readiness_deadline is not None
+                        and now >= self.readiness_deadline and not self.stop_requested):
+                    self.store.audit("readiness_result", self.store.load(self.session_id),
+                                     {"result": "timeout"})
+                    timeout_kind = "readiness"
+                elif not self.failed and elapsed >= self.config.absolute_timeout and not self.stop_requested:
+                    timeout_kind = "absolute"
+                elif (not self.failed and now - self.last_activity >= self.config.idle_timeout
+                      and not self.stop_requested):
+                    timeout_kind = "idle"
+                if timeout_kind is not None:
+                    self.store.audit("timeout", self.store.load(self.session_id), {"kind": timeout_kind})
+                    reason = f"{timeout_kind} timeout; emulator and workspace preserved for inspection"
+                    self.update(failure=reason, stop_reason=f"{timeout_kind}-timeout")
+                    self.transition(SessionState.FAILED, "failure", {"reason": reason})
+                    # Automatic expiry cannot assert that a historical guest was synced.
+                    # Preserve it without injecting monitor or guest-console commands.
+                    self.failed = True
                 code = process.poll()
                 if code is not None:
                     record = self.update(exit_code=code, stop_reason=self.stop_reason)

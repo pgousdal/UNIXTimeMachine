@@ -49,6 +49,7 @@ class SessionRecord:
     workspace: str | None = None
     transcript: str | None = None
     ready_at: str | None = None
+    readiness_started_at: str | None = None
     attached_at: str | None = None
     last_activity_at: str | None = None
     stop_reason: str | None = None

@@ -29,6 +29,19 @@ CLEAN_EMULATOR = (
     " data += os.read(0,1024)\n"
 )
 SILENT_EMULATOR = "import time; time.sleep(30)"
+INTERACTIVE_EMULATOR = (
+    "import os,tty\n"
+    "tty.setraw(0); data=b''\n"
+    "while b'boot' not in data: data += os.read(0,1024)\n"
+    "os.write(1,b'mem = 2020544\\r\\nlogin:')\n"
+    "while b'quit' not in data: data += os.read(0,1024)\n"
+)
+EXIT_ON_INPUT_EMULATOR = (
+    "import os,select,time,tty\n"
+    "tty.setraw(0)\n"
+    "ready,_,_=select.select([0],[],[],5)\n"
+    "raise SystemExit(9 if ready and os.read(0,1024) else 0)\n"
+)
 STUBBORN_EMULATOR = (
     "import os,signal,time,tty; tty.setraw(0); signal.signal(signal.SIGHUP,signal.SIG_IGN); "
     "os.write(1,b'login:'); time.sleep(30)"
@@ -89,6 +102,14 @@ class BrokerTests(unittest.TestCase):
             time.sleep(.02)
         self.fail(f"session did not reach {states}: {record.state}")
 
+    def attach_bytes(self, session_id, payload):
+        input_read, input_write = os.pipe(); output_read, output_write = os.pipe()
+        os.write(input_write, payload); os.close(input_write)
+        Broker(self.root).attach(session_id, input_read, output_write)
+        os.close(input_read); os.close(output_write)
+        output = os.read(output_read, 65536); os.close(output_read)
+        return output
+
     def test_valid_and_invalid_state_transitions(self):
         session = Session("s", "system")
         session.transition(SessionState.ALLOCATED)
@@ -140,13 +161,72 @@ class BrokerTests(unittest.TestCase):
         self.assertTrue({"attach", "detach", "stop", "reset", "release"}.issubset(events))
 
     def test_readiness_timeout_is_bounded_and_audited(self):
-        self.write_config(readiness_timeout=.15, shutdown_timeout=.3)
+        self.write_config(readiness_timeout=2, idle_timeout=.15, shutdown_timeout=.3)
         started = time.monotonic(); record = self.request(FakeBackend(SILENT_EMULATOR))
-        final = self.wait_state(record.session_id, {"failed", "resetting", "released"}, timeout=2)
+        final = self.wait_state(record.session_id, {"failed"}, timeout=2)
         self.assertLess(time.monotonic() - started, 2)
         audit = (self.root / "logs/broker-audit.jsonl").read_text()
+        self.assertIn('"kind":"idle"', audit)
+        self.assertEqual(final.state, "failed")
+
+    def test_operator_assisted_boot_arms_readiness_on_first_attach(self):
+        self.write_config(readiness_timeout=.4, idle_timeout=2)
+        record = self.request(FakeBackend(INTERACTIVE_EMULATOR))
+        time.sleep(.5)  # Longer than readiness, but no interactive boot has begun.
+        self.assertEqual(Broker(self.root).get(record.session_id).state, "starting")
+        output = self.attach_bytes(record.session_id, b"boot\r\x1d")
+        self.assertIn(b"Local attach", output)
+        ready = self.wait_state(record.session_id, {"ready"})
+        self.assertIsNotNone(ready.readiness_started_at)
+        self.assertIsNotNone(ready.ready_at)
+
+    def test_attach_and_detach_are_audited_while_starting(self):
+        record = self.request(FakeBackend(SILENT_EMULATOR))
+        self.assertEqual(Broker(self.root).get(record.session_id).state, "starting")
+        self.attach_bytes(record.session_id, b"\x1d")
+        deadline = time.monotonic() + 1
+        while time.monotonic() < deadline:
+            if Broker(self.root).get(record.session_id).readiness_started_at: break
+            time.sleep(.01)
+        lines = [json.loads(line) for line in
+                 (self.root / "logs/broker-audit.jsonl").read_text().splitlines()]
+        events = [line["event"] for line in lines]
+        self.assertLess(events.index("attach"), events.index("detach"))
+        self.assertIn("readiness_begin", events)
+        self.assertEqual(Broker(self.root).get(record.session_id).state, "starting")
+
+    def test_readiness_deadline_begins_once_and_expires_after_detach(self):
+        self.write_config(readiness_timeout=.15, idle_timeout=3)
+        record = self.request(FakeBackend(SILENT_EMULATOR))
+        self.attach_bytes(record.session_id, b"\x1d")
+        deadline = time.monotonic() + 1
+        while time.monotonic() < deadline:
+            first = Broker(self.root).get(record.session_id).readiness_started_at
+            if first: break
+            time.sleep(.01)
+        self.assertIsNotNone(first)
+        self.attach_bytes(record.session_id, b"\x1d")
+        self.assertEqual(Broker(self.root).get(record.session_id).readiness_started_at, first)
+        self.wait_state(record.session_id, {"failed"}, timeout=2)
+        audit = (self.root / "logs/broker-audit.jsonl").read_text()
         self.assertIn('"kind":"readiness"', audit)
-        self.assertIn(final.state, {"failed", "resetting", "released"})
+
+    def test_readiness_marker_at_deadline_wins_before_timeout(self):
+        delayed = "import os,time,tty; tty.setraw(0); time.sleep(.15); os.write(1,b'login:'); time.sleep(30)"
+        self.write_config(readiness_timeout=.2, idle_timeout=2)
+        record = self.request(FakeBackend(delayed))
+        self.attach_bytes(record.session_id, b"boot\r\x1d")
+        self.wait_state(record.session_id, {"ready"}, timeout=2)
+        audit = (self.root / "logs/broker-audit.jsonl").read_text()
+        self.assertNotIn('"result":"timeout"', audit)
+
+    def test_automatic_timeout_preserves_without_shutdown_input_or_forced_kill(self):
+        self.write_config(idle_timeout=.15, absolute_timeout=2, shutdown_timeout=.05)
+        record = self.request(FakeBackend(EXIT_ON_INPUT_EMULATOR))
+        failed = self.wait_state(record.session_id, {"failed"}, timeout=2)
+        self.assertTrue(Path(record.workspace).is_dir())
+        self.assertIsNone(failed.exit_code)
+        self.assertIsNotNone(process_start_ticks(record.emulator_pid))
 
     def test_idle_and_absolute_timeouts(self):
         for kind, settings in (("idle", {"idle_timeout": .15, "absolute_timeout": 3}),
@@ -166,6 +246,29 @@ class BrokerTests(unittest.TestCase):
         self.assertTrue(Path(record.workspace).is_dir())
         with self.assertRaisesRegex(UTMError, "still be running"):
             Broker(self.root).release(record.session_id)
+
+    def test_failed_and_missing_socket_attach_are_controlled(self):
+        record = self.request(FakeBackend(SILENT_EMULATOR))
+        store = Store(self.root)
+        with store.locked():
+            failed = store.load(record.session_id)
+            failed.failure = "qualification failure"
+            store.transition(failed, SessionState.FAILED, "failure")
+        with self.assertRaisesRegex(UTMError, "not attachable in state failed"):
+            Broker(self.root).attach(record.session_id)
+
+        missing = self.request(FakeBackend(SILENT_EMULATOR), "missing-socket")
+        Path(missing.socket_path).unlink()
+        with self.assertRaisesRegex(UTMError, "local console unavailable"):
+            Broker(self.root).attach(missing.session_id)
+
+        from scripts import utm
+        stderr = __import__("io").StringIO()
+        with mock.patch("sys.stderr", stderr):
+            status = utm.main(["--root", str(self.root), "broker", "attach", record.session_id])
+        self.assertEqual(status, 2)
+        self.assertIn("ERROR: session is not attachable in state failed", stderr.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
 
     def test_stale_pid_and_reconciliation_are_conservative(self):
         store = Store(self.root)

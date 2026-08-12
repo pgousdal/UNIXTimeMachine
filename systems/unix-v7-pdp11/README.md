@@ -9,6 +9,45 @@ as before, then detach with Ctrl-]. After guest `sync` commands, `broker stop`
 uses Ctrl-E plus `quit`, confirms exit, discards the writable session set and
 marks it released. Do not use that stop until the guest has been synced.
 
+The first M2 real-host qualification session, `unix-v7-pdp11-000001` (Open
+SIMH PID 9058), reached `mem = 2020544` and `login:` after that manual boot. It
+nevertheless failed because the original broker incorrectly started readiness
+at emulator launch. The local socket then disappeared and attach leaked a
+traceback. That session and workspace are deliberately preserved as evidence.
+The corrected broker starts readiness on first successful attach, audits
+attach/detach during STARTING, lets an observed boundary marker win, reports
+failed/missing-console attaches cleanly, and sends no automatic shutdown input
+when guest sync is unconfirmed. A fresh real-host run is still required; M2
+remains **IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION**.
+
+Use this exact sequence for the fresh M2 rerun (do not reuse or release the
+preserved `unix-v7-pdp11-000001` record):
+
+```sh
+cd /path/to/UNIXTimeMachine
+export UTM_ROOT=/srv/unix-time-machine
+sha256sum "$UTM_ROOT/golden/unix-v7-pdp11/rp0.dsk" \
+          "$UTM_ROOT/golden/unix-v7-pdp11/rp1.dsk"
+python3 scripts/utm.py broker config
+python3 scripts/utm.py broker request unix-v7-pdp11 --session-id m2-qualification-2
+python3 scripts/utm.py broker status m2-qualification-2
+python3 scripts/utm.py broker attach m2-qualification-2
+```
+
+At the SIMH console enter `boot`, then `hp(0,0)unix`, then Ctrl-D. Confirm
+`mem = 2020544` and `login:`. Log in as root, verify `/usr`, run `sync` twice,
+and detach with Ctrl-]. Then run:
+
+```sh
+python3 scripts/utm.py broker status m2-qualification-2
+python3 scripts/utm.py broker stop m2-qualification-2
+python3 scripts/utm.py broker release m2-qualification-2
+python3 scripts/utm.py broker status m2-qualification-2
+sha256sum "$UTM_ROOT/golden/unix-v7-pdp11/rp0.dsk" \
+          "$UTM_ROOT/golden/unix-v7-pdp11/rp1.dsk"
+grep 'm2-qualification-2' "$UTM_ROOT/logs/broker-audit.jsonl"
+```
+
 ## Canonical definition
 
 The runtime is a PDP-11/70 with 2 MiB, an RH70-class MASSBUS attachment as

@@ -12,11 +12,19 @@ import shutil
 import signal
 import stat
 import subprocess
+import sys
 import termios
 import time
 import tty
 from dataclasses import dataclass
 from pathlib import Path
+
+# Script and package imports must share the same UTMError class so the CLI can
+# reliably catch errors raised by broker modules.
+if __name__ == "utmlib":
+    sys.modules.setdefault("scripts.utmlib", sys.modules[__name__])
+else:
+    sys.modules.setdefault("utmlib", sys.modules[__name__])
 
 try:
     from manifestlib import system_manifest

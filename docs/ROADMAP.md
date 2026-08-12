@@ -30,6 +30,17 @@ release, unchanged golden hashes, timeout handling, and reconciliation after an
 intentionally interrupted supervisor. Record commands, session IDs, audit
 events and before/after golden hashes; unit tests alone do not close this gate.
 
+The first real-host attempt (`unix-v7-pdp11-000001`, Open SIMH PID 9058)
+manually reached `mem = 2020544` and `login:`, but exposed a lifecycle defect:
+readiness had been timed from emulator launch and expired before operator boot.
+The timeout then attempted an unconfirmed shutdown; the emulator was correctly
+left running, while its vanished socket also exposed an uncontrolled attach
+traceback. M2 remains **IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION** after
+the correction: startup covers transport creation, first attach begins the
+interactive readiness interval, abandoned STARTING is bounded by idle/absolute
+expiry, and automatic expiry preserves without shutdown input. The preserved
+session is qualification evidence, not disposable state for automatic deletion.
+
 ## M3 — 4.3BSD / VAX
 Repeatable 4.3BSD/VAX media contract, install, immutable golden, backend profile,
 boot/readiness, reset, preservation checks and real-host qualification. Do not

@@ -33,13 +33,22 @@ relays the local terminal; Ctrl-E is transparent to SIMH and Ctrl-] is the local
 detach escape. Only one attachment is allowed. No TCP socket is created.
 
 Admission counts every non-released record, including FAILED evidence, and
-applies total and per-system limits. Startup, readiness, idle, absolute runtime and shutdown all
-have positive finite deadlines. On stop/timeout the adapter's safe monitor-exit
-sequence is attempted. A confirmed exit advances through reset and automatically
-removes only the session workspace; records, audit and diagnostics remain. An
-unconfirmed exit becomes FAILED and its workspace is preserved.
-The supervisor and local PTY remain available in that case so an operator can
-inspect, attach, clean up and retry a bounded stop; no forced kill is sent.
+applies total and per-system limits. Startup bounds supervisor, emulator and
+local-console transport creation. For operator-booted systems, the first
+successful attach records `readiness_begin` and arms readiness exactly once;
+detach does not pause it. Finite idle and absolute deadlines bound a session
+that is never attached, so STARTING cannot persist forever. Console bytes are
+consumed before deadline decisions, making a readiness marker already available
+at the boundary win deterministically.
+
+Automatic readiness, idle or absolute expiry cannot prove that guest
+filesystems were synced. It therefore records FAILED and preserves the running
+emulator and workspace without sending console bytes or a forced kill. An
+explicit operator stop uses the adapter's documented monitor-exit sequence; a
+confirmed exit advances through reset and removes only the disposable workspace.
+An unconfirmed exit remains FAILED with evidence preserved. FAILED and RELEASED
+records are not attachable through the broker; missing sockets produce a
+controlled local-console diagnostic.
 
 PID records include Linux `/proc` start ticks so a recycled PID is never treated
 as the original process. `broker reconcile` marks records with missing/mismatched

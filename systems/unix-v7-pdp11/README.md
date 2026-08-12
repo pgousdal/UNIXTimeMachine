@@ -22,11 +22,15 @@ A single RP06 has unused partitions and could be repartitioned
 or populated differently, but that would be a different installation recipe;
 it is not the conservative, directly documented result preserved by M1.
 
-The console is local and logged. XQ, XU, DZ and other network/listener-capable
-devices are disabled. Open SIMH v3.12-3 is built with `NONETWORK=1`. `RH70` in
-the manifest describes the period controller class; Open SIMH exposes the
-RP04/05/06 controller/drives collectively as `RP`, while V7 calls these disks
-`hp` in standalone boot syntax and its device driver.
+The runtime console remains local and interactive. `system start` gives SIMH a
+local pseudo-terminal and relays the byte stream in both directions: operator
+input goes to SIMH, while SIMH output is written immediately to the foreground
+terminal and the session's `console.log`. No terminal server or monitor socket
+is opened. XQ, XU, DZ and other network/listener-capable devices are disabled,
+and Open SIMH v3.12-3 is built with `NONETWORK=1`. `RH70` in the manifest
+describes the period controller class; Open SIMH exposes the RP04/05/06
+controller/drives collectively as `RP`, while V7 calls these disks `hp` in
+standalone boot syntax and its device driver.
 
 Authoritative and project sources:
 
@@ -41,6 +45,37 @@ Authoritative and project sources:
 - Open SIMH PDP-11 simulator documentation:
   https://opensimh.org/simdocs/pdp11_doc.html
 - Pinned emulator: https://github.com/open-simh/simh/tree/v3.12-3
+- Pinned console implementation:
+  https://github.com/open-simh/simh/blob/v3.12-3/sim_console.c
+- Pinned simulator control implementation:
+  https://github.com/open-simh/simh/blob/v3.12-3/scp.c
+
+## Live-console readiness finding
+
+The first real-host `qualification-1` boot reached `mem = 2020544`, multi-user
+`login:`, accepted a root login, and reported `rp3 on /usr`. Readiness still
+returned `HUMAN_REQUIRED`, because the session `console.log` was empty while
+SIMH was running.
+
+That result is explained by the pinned v3.12-3 source. `SET CONSOLE LOG` opens a
+normal C `FILE *`; guest output in `sim_putchar` and `sim_putchar_s` is copied
+with `fputc`, with no per-character or per-line `fflush`. The simulator control
+path flushes `sim_log` after simulated execution stops and returns to the SIMH
+monitor. A regular-file stream is normally fully buffered, so this short boot
+transcript remained in SIMH's process buffer and was unavailable to a concurrent
+readiness process. It is not correct to say that SIMH invariably retains every
+console log until exit—the C library may flush a full buffer earlier—but the
+directive provides no live-visibility guarantee and is unsuitable as a
+readiness transport.
+
+The runtime template therefore does not use `SET CONSOLE LOG`. Capture now
+occurs outside the emulator at the PTY boundary, and each output chunk is
+written to an unbuffered session transcript before it is relayed to the
+operator terminal. `system ready` retains a bounded poll of that live
+transcript; it returns `PASS` when `login:` is observed and
+`HUMAN_REQUIRED` at the deadline otherwise. The installation phase files are
+invoked directly and retain SIMH logs only as after-the-fact installation
+records; readiness does not depend on them.
 
 ## Installation-tape identity
 
@@ -242,6 +277,11 @@ single-user mode to enter multi-user mode. In another terminal:
 ```sh
 python3 scripts/utm.py system ready unix-v7-pdp11 --session-id qualification-1 --timeout 120
 ```
+
+This reads the live PTY transcript while the foreground console remains fully
+interactive. The real-host observations above validate the installed guest,
+but the readiness defect invalidated the first automation result; rerun both
+bounded qualifications with this mechanism before changing M1 status.
 
 Inside V7 run `sync` four times, Ctrl-E, then `quit`. Confirm:
 

@@ -3,6 +3,7 @@ import hashlib
 import os
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from argparse import Namespace
@@ -134,6 +135,7 @@ class M1Tests(unittest.TestCase):
         self.assertIn("set xq disabled", text); self.assertIn("set xu disabled", text)
         self.assertIn(str(self.root / "sessions" / "unix-v7-pdp11" / "runtime-test" / "rp0.dsk"), text)
         self.assertIn(str(self.root / "sessions" / "unix-v7-pdp11" / "runtime-test" / "rp1.dsk"), text)
+        self.assertNotIn("set console log", text)
         self.assertNotIn("@SESSION_RP", text)
         self.assertNotIn(str(golden), text)
 
@@ -254,6 +256,65 @@ class M1Tests(unittest.TestCase):
         self.assertLess(time.monotonic() - start, 0.5)
         log = self.root / "console.log"; log.write_text("\nlogin:")
         self.assertEqual(utmlib.readiness(log, ["login:"], 1)[0], "PASS")
+
+    def test_live_console_output_is_captured_before_process_exit(self):
+        emulator = self.root / "live-console"
+        emulator.write_text("#!/bin/sh\nprintf 'mem = 2020544\\r\\nlogin:'\nsleep 0.3\n")
+        emulator.chmod(0o755)
+        transcript = self.root / "console.log"
+        output = self.root / "operator.out"
+        input_read, input_write = os.pipe()
+        started = threading.Event()
+        result = []
+        with output.open("wb", buffering=0) as operator:
+            thread = threading.Thread(
+                target=lambda: result.append(utmlib.interactive_console(
+                    [str(emulator)], transcript, on_start=lambda _pid: started.set(),
+                    stdin_fd=input_read, stdout_fd=operator.fileno())))
+            thread.start()
+            self.assertTrue(started.wait(1))
+            deadline = time.monotonic() + 1
+            while time.monotonic() < deadline and (not transcript.is_file() or
+                                                     "login:" not in transcript.read_text(errors="replace")):
+                time.sleep(0.01)
+            self.assertIn("login:", transcript.read_text(errors="replace"))
+            self.assertTrue(thread.is_alive(), "capture must be visible while SIMH is still running")
+            self.assertEqual(utmlib.readiness(transcript, ["login:"], 0.2)[0], "PASS")
+            thread.join(2)
+        os.close(input_read)
+        os.close(input_write)
+        self.assertFalse(thread.is_alive(), "console relay must terminate with the emulator")
+        self.assertEqual(result, [0])
+        self.assertIn(b"login:", output.read_bytes())
+
+    def test_foreground_console_input_and_output_are_preserved(self):
+        emulator = self.root / "interactive-console"
+        emulator.write_text(
+            "#!/usr/bin/env python3\n"
+            "import os, tty\n"
+            "tty.setraw(0)\n"
+            "os.write(1, b'ready>')\n"
+            "data = os.read(0, 1)\n"
+            "os.write(1, b'guest-read:' + data)\n")
+        emulator.chmod(0o755)
+        input_read, input_write = os.pipe()
+        output = self.root / "operator.out"
+        transcript = self.root / "console.log"
+        with output.open("wb", buffering=0) as operator:
+            thread = threading.Thread(target=utmlib.interactive_console, kwargs={
+                "command": [str(emulator)], "log_path": transcript,
+                "stdin_fd": input_read, "stdout_fd": operator.fileno()})
+            thread.start()
+            deadline = time.monotonic() + 1
+            while time.monotonic() < deadline and b"ready>" not in output.read_bytes():
+                time.sleep(0.01)
+            os.write(input_write, b"X")
+            thread.join(2)
+        os.close(input_read)
+        os.close(input_write)
+        self.assertFalse(thread.is_alive(), "foreground interaction must not hang")
+        self.assertIn(b"guest-read:X", output.read_bytes())
+        self.assertIn(b"guest-read:X", transcript.read_bytes())
 
 
 if __name__ == "__main__":

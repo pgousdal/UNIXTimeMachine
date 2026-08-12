@@ -31,7 +31,6 @@ set rp4 disabled
 set rp5 disabled
 set rp6 disabled
 set rp7 disabled
-set console log=@CONSOLE_LOG@
 attach rp0 @SESSION_RP0@
 attach rp1 @SESSION_RP1@
 boot rp0

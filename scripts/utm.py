@@ -14,8 +14,8 @@ from pathlib import Path
 
 from manifestlib import system_manifest
 from utmlib import (DEFAULT_ROOT, UTMError, atomic_json, find_emulator, import_golden,
-                    pid_alive, prepare_install, prepare_session, readiness, render_runtime, safe_id,
-                    stop_process, verify_media)
+                    interactive_console, pid_alive, prepare_install, prepare_session, readiness,
+                    render_runtime, safe_id, stop_process, verify_media)
 
 
 def root_path(args):
@@ -148,15 +148,27 @@ def cmd_system_start(args):
         prior = json.loads(state.read_text(encoding="utf-8"))
         if pid_alive(prior.get("pid", -1)):
             raise UTMError(f"system already running as pid {prior['pid']}")
-    process = subprocess.Popen([emulator, str(config)])
-    atomic_json(state, {"config": str(config), "emulator": emulator, "pid": process.pid,
-                        "session_id": session_id, "system_id": args.system_id})
-    print(f"RUNNING session={session_id} pid={process.pid}; local console attached (SIMH escape is Ctrl-E)")
+    runtime = {"config": str(config), "emulator": emulator,
+               "session_id": session_id, "system_id": args.system_id}
+    child_pid = None
+    exit_code = None
+
+    def started(pid):
+        nonlocal child_pid
+        child_pid = pid
+        atomic_json(state, {**runtime, "pid": pid})
+        print(f"RUNNING session={session_id} pid={pid}; local console attached (SIMH escape is Ctrl-E)",
+              flush=True)
     try:
-        return process.wait()
+        exit_code = interactive_console(
+            [emulator, str(config)],
+            root / "sessions" / args.system_id / session_id / "console.log",
+            on_start=started,
+        )
+        return exit_code
     finally:
-        atomic_json(state, {"config": str(config), "emulator": emulator, "exit_code": process.poll(),
-                            "pid": process.pid, "session_id": session_id, "system_id": args.system_id})
+        if child_pid is not None:
+            atomic_json(state, {**runtime, "exit_code": exit_code, "pid": child_pid})
 
 
 def cmd_system_stop(args):

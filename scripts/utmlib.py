@@ -5,12 +5,16 @@ import grp
 import hashlib
 import json
 import os
+import pty
 import re
+import selectors
 import shutil
 import signal
 import stat
 import subprocess
+import termios
 import time
+import tty
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -245,7 +249,7 @@ def render_runtime(system_id: str, session_id: str, host_root: Path) -> Path:
     disks = prepared_disks(manifest)
     template = manifest_path.parent / manifest["emulator"]["configuration"]
     config = template.read_text(encoding="utf-8")
-    replacements = {"@CONSOLE_LOG@": str((workspace / "console.log").resolve())}
+    replacements = {}
     for disk in disks:
         path = workspace / disk["session_filename"]
         if not path.is_file():
@@ -333,6 +337,82 @@ def readiness(log_path: Path, patterns: list[str], timeout: float, poll: float =
         if time.monotonic() >= deadline:
             return "HUMAN_REQUIRED", last
         time.sleep(min(poll, max(0, deadline - time.monotonic())))
+
+
+def interactive_console(command: list[str], log_path: Path, on_start=None,
+                        stdin_fd: int = 0, stdout_fd: int = 1) -> int:
+    """Run a local console on a PTY and tee its live output to a transcript."""
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    pid, master_fd = pty.fork()
+    if pid == 0:
+        try:
+            os.execv(command[0], command)
+        except BaseException as exc:
+            os.write(2, f"unable to execute {command[0]}: {exc}\n".encode())
+            os._exit(127)
+
+    selector = selectors.DefaultSelector()
+    selector.register(master_fd, selectors.EVENT_READ, "console")
+    try:
+        selector.register(stdin_fd, selectors.EVENT_READ, "input")
+    except (OSError, PermissionError):
+        pass
+    saved_terminal = termios.tcgetattr(stdin_fd) if os.isatty(stdin_fd) else None
+    if saved_terminal is not None:
+        tty.setraw(stdin_fd)
+    status = None
+    console_open = True
+    try:
+        if on_start is not None:
+            on_start(pid)
+        with log_path.open("wb", buffering=0) as transcript:
+            while status is None or console_open:
+                for key, _ in selector.select(0.1):
+                    if key.data == "console":
+                        try:
+                            data = os.read(master_fd, 65536)
+                        except OSError as exc:
+                            # Linux PTY masters report EIO after the slave closes.
+                            if exc.errno == 5:
+                                data = b""
+                            else:
+                                raise
+                        if not data:
+                            selector.unregister(master_fd)
+                            console_open = False
+                        else:
+                            transcript.write(data)
+                            view = memoryview(data)
+                            while view:
+                                view = view[os.write(stdout_fd, view):]
+                    else:
+                        data = os.read(stdin_fd, 65536)
+                        if not data:
+                            selector.unregister(stdin_fd)
+                        else:
+                            view = memoryview(data)
+                            while view:
+                                view = view[os.write(master_fd, view):]
+                if status is None:
+                    waited, child_status = os.waitpid(pid, os.WNOHANG)
+                    if waited == pid:
+                        status = child_status
+    except BaseException:
+        try:
+            os.kill(pid, signal.SIGINT)
+        except ProcessLookupError:
+            pass
+        try:
+            os.waitpid(pid, 0)
+        except ChildProcessError:
+            pass
+        raise
+    finally:
+        if saved_terminal is not None:
+            termios.tcsetattr(stdin_fd, termios.TCSAFLUSH, saved_terminal)
+        selector.close()
+        os.close(master_fd)
+    return os.waitstatus_to_exitcode(status)
 
 
 def pid_alive(pid: int) -> bool:

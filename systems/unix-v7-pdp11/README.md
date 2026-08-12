@@ -1,6 +1,6 @@
 # UNIX V7 / PDP-11/70 (M1)
 
-Status: **IMPLEMENTED / AWAITING HISTORICAL-SYSTEM QUALIFICATION**.
+Status: **COMPLETE**.
 
 ## Canonical definition
 
@@ -50,7 +50,7 @@ Authoritative and project sources:
 - Pinned simulator control implementation:
   https://github.com/open-simh/simh/blob/v3.12-3/scp.c
 
-## Live-console readiness finding
+## Resolved live-console readiness defect
 
 The first real-host `qualification-1` boot reached `mem = 2020544`, multi-user
 `login:`, accepted a root login, and reported `rp3 on /usr`. Readiness still
@@ -75,7 +75,26 @@ operator terminal. `system ready` retains a bounded poll of that live
 transcript; it returns `PASS` when `login:` is observed and
 `HUMAN_REQUIRED` at the deadline otherwise. The installation phase files are
 invoked directly and retain SIMH logs only as after-the-fact installation
-records; readiness does not depend on them.
+records; readiness does not depend on them. Both real-host qualifications
+completed after this PTY fix, resolving the defect.
+
+## Real-host qualification record
+
+Qualification-1 was rerun from the immutable golden baseline after the PTY
+live-console readiness fix and reached the expected V7 login state.
+
+Qualification-2 used a fresh disposable session from the same golden baseline.
+The PDP-11/70 runtime booted with `mem = 2020544`, reached the multi-user
+`login:` prompt, accepted a root login, and reported `rp3 on /usr`. `df`
+reported 1192 blocks available on `/dev/rp0` and 297416 on `/dev/rp3`. The guest
+was synced four times and stopped cleanly with Ctrl-E followed by `quit`.
+
+The golden disk SHA-256 values remained unchanged after qualification:
+
+```text
+rp0.dsk  f9f12dc7afd7bbc05c848a5d26d24a58b975c44b42e846843c01c2d1f9b4446d
+rp1.dsk  2e401e4c1035980ca48c93cc6834bb4b8ddd1e1f596555afa882416560ca686d
+```
 
 ## Installation-tape identity
 
@@ -142,7 +161,8 @@ stage `Boot` prompt but `tm(0,3)` then failed with `Can't load 0 files` and a
 trap. That establishes the staging mismatch as the actionable cause for this
 qualification path; it does not prove that every real PDP-11/70 is incapable of
 installing V7. The corrected contract follows the documented Open SIMH phase
-boundary exactly. Qualification remains pending until it is rerun on the VM.
+boundary exactly. The successful real-host qualifications recorded above close
+that gate.
 
 The May 2024 tape correction adds the final logical/physical end marker. It does
 not add a leading file, renumber the seven source tape files, change `tm(0,3)`,
@@ -279,9 +299,7 @@ python3 scripts/utm.py system ready unix-v7-pdp11 --session-id qualification-1 -
 ```
 
 This reads the live PTY transcript while the foreground console remains fully
-interactive. The real-host observations above validate the installed guest,
-but the readiness defect invalidated the first automation result; rerun both
-bounded qualifications with this mechanism before changing M1 status.
+interactive. The completed real-host qualifications used this mechanism.
 
 Inside V7 run `sync` four times, Ctrl-E, then `quit`. Confirm:
 
@@ -312,5 +330,5 @@ python3 scripts/utm.py system ready unix-v7-pdp11 --session-id qualification-2 -
   both disks, reaches `login:`, has `/usr` mounted and intact, stops cleanly, and
   leaves both golden hashes unchanged.
 
-Until those observations occur on the qualification VM, do not claim golden
-creation, V7 boot/login, filesystem integrity, repeatability, or M1 completion.
+These observations were completed on the qualification VM and satisfy the M1
+real-host gate. M2 remains out of scope for this milestone.

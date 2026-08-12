@@ -18,8 +18,9 @@ See `docs/ROADMAP.md`, `docs/ARCHITECTURE.md`, `docs/PRESERVATION.md`, `docs/SEC
 
 M1 implements the first operator-controlled exhibit: UNIX Seventh Edition on a
 SIMH PDP-11/70. Its supported host baseline is Debian 13 (Trixie). It is
-**IMPLEMENTED / AWAITING HISTORICAL-SYSTEM QUALIFICATION**. No
-historical media is included, and repository tests do not claim that UNIX booted.
+**COMPLETE**: two disposable real-host sessions created from the immutable
+golden baseline reached the expected V7 login state, and the final golden
+SHA-256 values remained unchanged. No historical media is included.
 
 ```sh
 make check
@@ -34,4 +35,5 @@ make qualify
 
 `media verify` remains `MISSING` until the operator supplies lawful historical
 media; provisioning never downloads it. The exact manual installation, two-boot
-qualification, and teardown procedure is in `systems/unix-v7-pdp11/README.md`.
+qualification record, and teardown procedure is in
+`systems/unix-v7-pdp11/README.md`.

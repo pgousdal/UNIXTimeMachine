@@ -18,7 +18,10 @@ import tty
 from dataclasses import dataclass
 from pathlib import Path
 
-from manifestlib import system_manifest
+try:
+    from manifestlib import system_manifest
+except ModuleNotFoundError:  # Package import used by the broker supervisor.
+    from .manifestlib import system_manifest
 
 DEFAULT_ROOT = Path("/srv/unix-time-machine")
 SAFE_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")

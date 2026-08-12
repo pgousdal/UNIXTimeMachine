@@ -24,3 +24,16 @@ binary has a root-owned `PROVENANCE` record naming upstream, version, full
 commit, source URL, source SHA-256, target, and build options. This does not
 authenticate or alter operator-supplied UNIX media and must not be confused with
 a historical-media verification result.
+
+M2 records the complete golden hash set in each session record at preparation.
+Before reset/release it hashes the immutable set again; a mismatch changes the
+session to FAILED and preserves the workspace. A confirmed emulator exit is
+required before disposable disks are removed. Reset deletes only the session
+workspace, never `golden/`; transcript, supervisor diagnostics, audit JSONL and
+the released state record remain available outside that workspace.
+
+Partial preparation, stale PID identity, supervisor loss, emulator exit and
+ambiguous teardown all retain evidence. Reconciliation reports orphan
+transaction directories and failed sessions but does not remove them. Audit
+events deliberately exclude terminal contents; the separate console transcript
+may contain guest-entered data and must be protected under local policy.

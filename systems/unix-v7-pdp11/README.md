@@ -1,6 +1,13 @@
-# UNIX V7 / PDP-11/70 (M1)
+# UNIX V7 / PDP-11/70 (M1, M2 backend)
 
 Status: **COMPLETE**.
+
+M1 is complete; the M2 broker adapter is implemented but awaits the real-host
+qualification gate in `docs/ROADMAP.md`. The original M1 workflow below remains
+valid. For M2, request a session, attach, enter `boot`, `hp(0,0)unix`, and Ctrl-D
+as before, then detach with Ctrl-]. After guest `sync` commands, `broker stop`
+uses Ctrl-E plus `quit`, confirms exit, discards the writable session set and
+marks it released. Do not use that stop until the guest has been synced.
 
 ## Canonical definition
 

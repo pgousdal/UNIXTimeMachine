@@ -17,10 +17,23 @@ SIMH live-console logging defect found during qualification was resolved by
 capturing the PTY stream outside the emulator.
 
 ## M2 — Session broker
-PTY/TCP handoff, timeouts, admission, audit, teardown.
+**IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION.** Local Unix-domain PTY
+handoff, validated lifecycle, deterministic admission, bounded startup,
+readiness/idle/absolute/shutdown deadlines, structured audit, preservation-safe
+teardown, backend abstraction and conservative crash reconciliation are
+implemented and covered by synthetic tests. No TCP handoff was added.
+
+M2 becomes **COMPLETE** only after a Debian 13 qualification demonstrates with
+the real UNIX V7 backend: allocation, complete preparation, emulator start,
+readiness, attach, ACTIVE, clean detach, guest-synced stop, reset/discard,
+release, unchanged golden hashes, timeout handling, and reconciliation after an
+intentionally interrupted supervisor. Record commands, session IDs, audit
+events and before/after golden hashes; unit tests alone do not close this gate.
 
 ## M3 — 4.3BSD / VAX
-Repeatable boot and reset.
+Repeatable 4.3BSD/VAX media contract, install, immutable golden, backend profile,
+boot/readiness, reset, preservation checks and real-host qualification. Do not
+add a BBS door or public listener in M3.
 
 ## M4 — AMIX / Amiga 3000
 FS-UAE A3000 profile, tape/media procedure, terminal handoff, reset.

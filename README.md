@@ -37,3 +37,26 @@ make qualify
 media; provisioning never downloads it. The exact manual installation, two-boot
 qualification record, and teardown procedure is in
 `systems/unix-v7-pdp11/README.md`.
+
+M2 implements the local session-broker foundation and is **IMPLEMENTED / AWAITING
+REAL-HOST QUALIFICATION**. It allocates deterministic disposable sessions,
+supervises a backend through a PTY, offers an operator-only Unix-domain console,
+enforces admission and bounded deadlines, records JSON Lines audit events, and
+conservatively reconciles interrupted state. It adds no network listener or BBS
+integration. The qualified M1 commands remain supported.
+
+```sh
+python3 scripts/utm.py broker config
+python3 scripts/utm.py broker request unix-v7-pdp11
+python3 scripts/utm.py broker list
+python3 scripts/utm.py broker attach SESSION_ID   # Ctrl-] detach; Ctrl-E reaches SIMH
+python3 scripts/utm.py broker status SESSION_ID
+python3 scripts/utm.py broker stop SESSION_ID     # sync the guest first
+python3 scripts/utm.py broker release SESSION_ID  # idempotent after automatic release
+python3 scripts/utm.py broker reconcile
+```
+
+Defaults are explicit in `broker/config.py`; an operator may override them with
+`/srv/unix-time-machine/state/broker-config.json` using the exact keys printed
+by `broker config`. M2 must not be marked complete until the real-host gate in
+`docs/ROADMAP.md` has been observed.

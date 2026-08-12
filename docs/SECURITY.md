@@ -21,3 +21,17 @@ source archive and Debian 13 packages from configured official host sources. It
 does not add repositories or execute downloaded installer scripts. The PDP-11
 target is compiled with `NONETWORK=1`; this supply-time host access does not
 enable networking in the historical guest.
+
+M2 retains this boundary. Broker access is local and operator-controlled. Its
+only handoff endpoint is a filesystem Unix-domain socket (mode 0660) beneath the
+protected state directory; there is no public Telnet, SSH, TCP, web, BBS, guest
+bridge or remote monitor. Ctrl-E remains available because an attached user is
+a trusted operator, while Ctrl-] detaches locally. Only one operator may attach.
+
+Session and PID input is validated, process identity includes `/proc` start
+ticks, state mutation is locked and atomic, and audit entries contain lifecycle
+metadata rather than terminal content. Backend launch descriptions must never
+contain secrets. A failed or ambiguous shutdown is preserved for inspection;
+the broker never escalates to SIGKILL. Operators must sync/halt the historical
+guest before requesting a normal stop. Deadline-triggered stop first sends the
+backend's safe emulator shutdown sequence and records the outcome.

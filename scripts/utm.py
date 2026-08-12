@@ -12,10 +12,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
 from manifestlib import system_manifest
 from utmlib import (DEFAULT_ROOT, UTMError, atomic_json, find_emulator, import_golden,
                     interactive_console, pid_alive, prepare_install, prepare_session, readiness,
                     render_runtime, safe_id, stop_process, verify_media)
+from broker.config import BrokerConfig
+from broker.manager import Broker
 
 
 def root_path(args):
@@ -202,6 +208,60 @@ def cmd_system_ready(args):
     return int(status != "PASS")
 
 
+def broker_for(args):
+    return Broker(root_path(args))
+
+
+def print_broker_record(record):
+    fields = [f"session={record.session_id}", f"system={record.system_id}",
+              f"state={record.state}"]
+    if record.emulator_pid: fields.append(f"emulator_pid={record.emulator_pid}")
+    if record.failure: fields.append(f"failure={record.failure}")
+    print(" ".join(fields))
+
+
+def cmd_broker_request(args):
+    record = broker_for(args).request(args.system_id, args.session_id)
+    print_broker_record(record)
+    print(f"Attach locally with: {sys.executable} scripts/utm.py --root {root_path(args)} broker attach {record.session_id}")
+    return 0
+
+
+def cmd_broker_status(args):
+    print_broker_record(broker_for(args).get(args.session_id)); return 0
+
+
+def cmd_broker_list(args):
+    records = broker_for(args).list()
+    if not records: print("(no broker sessions)")
+    for record in records: print_broker_record(record)
+    return 0
+
+
+def cmd_broker_attach(args):
+    broker_for(args).attach(args.session_id); return 0
+
+
+def cmd_broker_stop(args):
+    record = broker_for(args).stop(args.session_id); print_broker_record(record)
+    if record.state == "failed": print("Evidence preserved; inspect status, transcript, and audit log before release.")
+    return int(record.state == "failed")
+
+
+def cmd_broker_release(args):
+    record = broker_for(args).release(args.session_id); print_broker_record(record); return 0
+
+
+def cmd_broker_reconcile(args):
+    for session_id, result in broker_for(args).reconcile(): print(f"{result:18} {session_id}")
+    return 0
+
+
+def cmd_broker_config(args):
+    import json
+    print(json.dumps(BrokerConfig.load(root_path(args)).as_dict(), sort_keys=True, indent=2)); return 0
+
+
 def parser():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--root", default=os.environ.get("UTM_ROOT", str(DEFAULT_ROOT)), help="host data root")
@@ -222,6 +282,15 @@ def parser():
         if name == "stop":
             command.add_argument("--guest-synced", action="store_true"); command.add_argument("--timeout", type=float, default=10)
         if name == "ready": command.add_argument("--timeout", type=float, default=120)
+    broker = sub.add_parser("broker").add_subparsers(dest="broker_command", required=True)
+    request = broker.add_parser("request"); request.add_argument("system_id")
+    request.add_argument("--session-id"); request.set_defaults(func=cmd_broker_request)
+    for name, func in (("status", cmd_broker_status), ("attach", cmd_broker_attach),
+                       ("stop", cmd_broker_stop), ("release", cmd_broker_release)):
+        command = broker.add_parser(name); command.add_argument("session_id"); command.set_defaults(func=func)
+    broker.add_parser("list").set_defaults(func=cmd_broker_list)
+    broker.add_parser("reconcile").set_defaults(func=cmd_broker_reconcile)
+    broker.add_parser("config").set_defaults(func=cmd_broker_config)
     return p
 
 

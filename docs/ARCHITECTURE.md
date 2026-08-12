@@ -1,12 +1,50 @@
 # Architecture
 
-Visitor -> BBS/Telnet/SSH frontend -> Session broker -> constrained emulator adapter -> historical guest.
+Future visitor frontend -> session broker -> constrained emulator adapter -> historical guest.
 
-The first arrow and broker are future architecture, not M1 behavior. M1 is an
+The first arrow remains future architecture. M1 is an
 operator-only local console: `scripts/utm.py` validates policy and lifecycle,
 then invokes the SIMH backend. It creates no listener.
 
-The broker will own allocation, readiness, terminal handoff, timeouts, teardown, reset, and audit events. Emulator adapters remain small and declarative.
+M2's broker owns allocation, readiness, terminal handoff, timeouts, teardown,
+reset and audit events. `Backend` is the emulator-neutral contract;
+`SimhBackend` adapts the qualified M1 preparation/runtime primitives. Later
+FS-UAE, QEMU, MAME and specialist adapters implement that contract rather than
+adding emulator rules to the broker.
+
+The validated lifecycle is:
+
+```text
+REQUESTED -> ALLOCATED -> PREPARING -> STARTING -> READY <-> ACTIVE
+                                                    |          |
+                                                    +-> STOPPING -> RESETTING -> RELEASED
+Any pre-release operational state -> FAILED; FAILED -> STOPPING or RESETTING.
+```
+
+Every edge is checked. Records under `state/broker/sessions/` are deterministic
+JSON written by atomic replace under a broker file lock. Allocation uses an
+atomically persisted monotonic counter and refuses any state-record or workspace
+collision. `logs/broker-audit.jsonl` uses one `O_APPEND` write per structured
+event. Console bytes are stored separately under `logs/sessions/SESSION_ID/`.
+
+Each session has a detached supervisor which owns the emulator PTY, live
+transcript and a mode-0660 Unix-domain socket under `state/broker/`. `attach`
+relays the local terminal; Ctrl-E is transparent to SIMH and Ctrl-] is the local
+detach escape. Only one attachment is allowed. No TCP socket is created.
+
+Admission counts every non-released record, including FAILED evidence, and
+applies total and per-system limits. Startup, readiness, idle, absolute runtime and shutdown all
+have positive finite deadlines. On stop/timeout the adapter's safe monitor-exit
+sequence is attempted. A confirmed exit advances through reset and automatically
+removes only the session workspace; records, audit and diagnostics remain. An
+unconfirmed exit becomes FAILED and its workspace is preserved.
+The supervisor and local PTY remain available in that case so an operator can
+inspect, attach, clean up and retry a bounded stop; no forced kill is sent.
+
+PID records include Linux `/proc` start ticks so a recycled PID is never treated
+as the original process. `broker reconcile` marks records with missing/mismatched
+supervisors FAILED, reports whether an emulator still matches, and preserves
+orphan preparation directories. It never deletes uncertain state.
 
 Canonical host layout:
 

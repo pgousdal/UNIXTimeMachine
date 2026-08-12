@@ -112,59 +112,107 @@ def copy_exclusive(source: Path, destination: Path) -> str:
     return method
 
 
-def import_golden(system_id: str, source: Path, host_root: Path) -> tuple[Path, str]:
+def prepared_disks(manifest: dict) -> list[dict]:
+    disks = manifest.get("prepared", {}).get("disks")
+    if not isinstance(disks, list) or not disks:
+        raise UTMError("manifest has no prepared disk set")
+    return disks
+
+
+def import_golden(system_id: str, source: Path, host_root: Path) -> tuple[Path, list[str]]:
     _, manifest = system_manifest(safe_id(system_id, "system id"))
     source = source.resolve(strict=True)
     media_root = (host_root / "media").resolve()
     if source == media_root or media_root in source.parents:
         raise UTMError("refusing to treat source media as a prepared golden disk")
-    destination = host_root / "golden" / system_id / manifest["prepared"]["golden_filename"]
-    method = copy_exclusive(source, destination)
-    destination.chmod(0o440)
-    atomic_json(destination.parent / "metadata.json", {
-        "golden_sha256": sha256(destination), "source_path": str(source), "system_id": system_id
-    })
-    return destination, method
+    if not source.is_dir():
+        raise UTMError("golden import source must be a staging directory containing the complete disk set")
+    disks = prepared_disks(manifest)
+    sources = [(disk, source / disk["golden_filename"]) for disk in disks]
+    missing = [str(path) for _, path in sources if not path.is_file()]
+    if missing:
+        raise UTMError("incomplete staging disk set; missing: " + ", ".join(missing))
+    golden_root = host_root / "golden"
+    golden_root.mkdir(parents=True, exist_ok=True)
+    destination = golden_root / system_id
+    if destination.exists() and any(destination.iterdir()):
+        raise UTMError(f"refusing to overwrite existing golden set: {destination}")
+    transaction = golden_root / f".{system_id}.import-{os.getpid()}"
+    if transaction.exists():
+        raise UTMError(f"stale golden import transaction exists: {transaction}")
+    transaction.mkdir(mode=0o750)
+    methods = []
+    hashes = {}
+    try:
+        for disk, disk_source in sources:
+            target = transaction / disk["golden_filename"]
+            methods.append(copy_exclusive(disk_source, target))
+            target.chmod(0o440)
+            hashes[disk["id"]] = {"filename": disk["golden_filename"], "sha256": sha256(target)}
+        atomic_json(transaction / "metadata.json", {
+            "disks": hashes, "source_path": str(source), "system_id": system_id
+        })
+        (transaction / "metadata.json").chmod(0o440)
+        if destination.exists():
+            destination.rmdir()  # only an empty provisioning-era directory is removable
+        os.replace(transaction, destination)
+    except Exception:
+        shutil.rmtree(transaction, ignore_errors=True)
+        raise
+    return destination, methods
 
 
-def prepare_session(system_id: str, session_id: str, host_root: Path) -> tuple[Path, str]:
+def prepare_session(system_id: str, session_id: str, host_root: Path) -> tuple[Path, list[str]]:
     _, manifest = system_manifest(safe_id(system_id, "system id"))
     safe_id(session_id, "session id")
-    golden = host_root / "golden" / system_id / manifest["prepared"]["golden_filename"]
-    if not golden.is_file():
-        raise UTMError(f"missing prepared golden disk: {golden}")
-    before = sha256(golden)
+    disks = prepared_disks(manifest)
+    golden_dir = host_root / "golden" / system_id
+    goldens = [(disk, golden_dir / disk["golden_filename"]) for disk in disks]
+    missing = [str(path) for _, path in goldens if not path.is_file()]
+    if missing:
+        raise UTMError("incomplete golden disk set; missing: " + ", ".join(missing))
+    before = {disk["id"]: sha256(path) for disk, path in goldens}
     workspace = host_root / "sessions" / system_id / session_id
     if workspace.exists():
         raise UTMError(f"refusing to overwrite existing session: {workspace}")
-    workspace.mkdir(parents=True, mode=0o750)
-    destination = workspace / manifest["prepared"]["session_filename"]
+    workspace.parent.mkdir(parents=True, exist_ok=True)
+    transaction = workspace.parent / f".{session_id}.prepare-{os.getpid()}"
+    if transaction.exists():
+        raise UTMError(f"stale session preparation transaction exists: {transaction}")
+    transaction.mkdir(mode=0o750)
     try:
-        method = copy_exclusive(golden, destination)
-        destination.chmod(0o640)
-        after = sha256(golden)
+        methods = []
+        for disk, golden in goldens:
+            destination = transaction / disk["session_filename"]
+            methods.append(copy_exclusive(golden, destination))
+            destination.chmod(0o640)
+        after = {disk["id"]: sha256(path) for disk, path in goldens}
         if before != after:
-            raise UTMError("preservation invariant violated: golden disk changed during copy")
-        atomic_json(workspace / "session.json", {
-            "copy_method": method, "golden_sha256": before, "session_id": session_id,
+            raise UTMError("preservation invariant violated: golden disk set changed during copy")
+        atomic_json(transaction / "session.json", {
+            "copy_methods": methods, "golden_sha256": before, "session_id": session_id,
             "state": "prepared", "system_id": system_id
         })
+        os.replace(transaction, workspace)
     except Exception:
-        shutil.rmtree(workspace, ignore_errors=True)
+        shutil.rmtree(transaction, ignore_errors=True)
         raise
-    return workspace, method
+    return workspace, methods
 
 
 def render_runtime(system_id: str, session_id: str, host_root: Path) -> Path:
     manifest_path, manifest = system_manifest(safe_id(system_id, "system id"))
     safe_id(session_id, "session id")
     workspace = host_root / "sessions" / system_id / session_id
-    disk = workspace / manifest["prepared"]["session_filename"]
-    if not disk.is_file():
-        raise UTMError(f"missing session disk: {disk}")
+    disks = prepared_disks(manifest)
     template = manifest_path.parent / manifest["emulator"]["configuration"]
     config = template.read_text(encoding="utf-8")
-    replacements = {"@SESSION_DISK@": str(disk.resolve()), "@CONSOLE_LOG@": str((workspace / "console.log").resolve())}
+    replacements = {"@CONSOLE_LOG@": str((workspace / "console.log").resolve())}
+    for disk in disks:
+        path = workspace / disk["session_filename"]
+        if not path.is_file():
+            raise UTMError(f"incomplete session disk set; missing: {path}")
+        replacements[disk["runtime_token"]] = str(path.resolve())
     for token, value in replacements.items():
         if any(char in value for char in "\n\r\t ;\""):
             raise UTMError(f"runtime path contains characters unsafe for SIMH: {value}")
@@ -176,6 +224,43 @@ def render_runtime(system_id: str, session_id: str, host_root: Path) -> Path:
     temporary.write_text(config, encoding="utf-8")
     os.replace(temporary, output)
     return output
+
+
+def prepare_install(system_id: str, staging: Path, host_root: Path) -> Path:
+    manifest_path, manifest = system_manifest(safe_id(system_id, "system id"))
+    staging = staging.resolve()
+    for protected in ((host_root / "media").resolve(), (host_root / "golden").resolve()):
+        if staging == protected or protected in staging.parents:
+            raise UTMError("installation staging must be outside media/ and golden/")
+    if staging.exists():
+        raise UTMError(f"refusing to overwrite existing staging directory: {staging}")
+    media_results = verify_media(system_id, host_root)
+    if any(result.status != "PASS" for result in media_results):
+        raise UTMError("canonical installation media must pass verification before staging")
+    media = manifest["media"]
+    item = media["items"][0]
+    media_dir = host_root / "media" / media.get("directory", system_id)
+    tape = next(path for path in (media_dir / name for name in item["filenames"]) if path.is_file())
+    staging.mkdir(parents=True, mode=0o750)
+    try:
+        template = manifest_path.parent / manifest["emulator"]["installation_configuration"]
+        config = template.read_text(encoding="utf-8")
+        replacements = {"@INSTALL_TAPE@": str(tape.resolve()),
+                        "@INSTALL_CONSOLE_LOG@": str((staging / "install-console.log").resolve())}
+        for disk in prepared_disks(manifest):
+            replacements[f"@STAGING_{disk['unit']}@"] = str((staging / disk["golden_filename"]).resolve())
+        for token, value in replacements.items():
+            if any(char in value for char in "\n\r\t ;\""):
+                raise UTMError(f"installation path contains characters unsafe for SIMH: {value}")
+            config = config.replace(token, value)
+        if "@" in config:
+            raise UTMError("unresolved token in SIMH installation configuration")
+        output = staging / "install.ini"
+        output.write_text(config, encoding="utf-8")
+        return output
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
 
 
 def find_emulator(manifest: dict) -> str:

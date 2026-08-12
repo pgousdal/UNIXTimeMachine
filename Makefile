@@ -1,5 +1,5 @@
 PYTHON ?= python3
-.PHONY: check test catalog validate ansible-syntax syntax provision qualify
+.PHONY: check test catalog validate ansible-syntax syntax provision operator-add qualify
 ANSIBLE_CONFIG_FILE := $(CURDIR)/ansible/ansible.cfg
 ANSIBLE_INVENTORY := $(CURDIR)/ansible/inventory/localhost.yml
 ANSIBLE_PLAYBOOK := $(CURDIR)/ansible/playbooks/site.yml
@@ -13,9 +13,13 @@ test:
 catalog:
 	$(PYTHON) scripts/utm.py catalog
 ansible-syntax:
-	ANSIBLE_CONFIG=$(ANSIBLE_CONFIG_FILE) ansible-playbook --syntax-check -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK)
+	ANSIBLE_LOCAL_TEMP=/tmp/utm-ansible-local ANSIBLE_CONFIG=$(ANSIBLE_CONFIG_FILE) ansible-playbook --syntax-check -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK)
+	ANSIBLE_LOCAL_TEMP=/tmp/utm-ansible-local ANSIBLE_CONFIG=$(ANSIBLE_CONFIG_FILE) ansible-playbook --syntax-check -i $(ANSIBLE_INVENTORY) $(CURDIR)/ansible/playbooks/operator-add.yml
 provision:
 	ANSIBLE_CONFIG=$(ANSIBLE_CONFIG_FILE) ansible-playbook -i $(ANSIBLE_INVENTORY) $(ANSIBLE_PLAYBOOK) --ask-become-pass
+operator-add:
+	@test -n "$(USER)" || (echo "ERROR: USER is required (make operator-add USER=<account>)" >&2; exit 2)
+	ANSIBLE_CONFIG=$(ANSIBLE_CONFIG_FILE) ansible-playbook -i $(ANSIBLE_INVENTORY) $(CURDIR)/ansible/playbooks/operator-add.yml --ask-become-pass -e "utm_operator_user=$(USER)"
 qualify: check
 	$(PYTHON) scripts/utm.py doctor
 	$(PYTHON) scripts/utm.py media verify unix-v7-pdp11

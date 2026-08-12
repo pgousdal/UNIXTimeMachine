@@ -2,18 +2,20 @@
 
 Record provenance, logical name, version, source, acquisition date, size and SHA-256 where practical. Keep source media separate from normalized media, golden systems and disposable session state. Public sessions must never write to source media or golden images.
 
-For M1, media verification is read-only. `UNPINNED` means a SHA-256 was computed
-and displayed but no trusted canonical value exists in the manifest; it is not
-cryptographic verification. Operators should retain that value with their own
-provenance record and propose a manifest pin only when its canonical status and
-redistribution-independent identity are supportable. Never invent a hash.
+For M1, media verification is read-only. The supported tape is the exact SIMH
+bitstream currently published by TUHS at
+`Archive/Distributions/Research/Keith_Bostic_v7/v7.tap.gz`, identified after
+decompression by size and SHA-256 in the manifest. This identifies bytes, not an
+untouched physical-tape capture, legal permission, or every legitimate V7 tape
+layout. Alternate distributions and earlier generated layouts are unverified;
+they fail the canonical check even if named `v7.tap`.
 
-The golden import rejects paths beneath `media/`, uses exclusive creation, and
-makes the resulting disk group-readable but not writable. Session preparation
-uses an exclusive reflink when the filesystem supports it and a fully copied,
-fsynced fallback otherwise. It hashes the golden before and after copying and
-never overwrites a session. Discard only the named session directory after SIMH
-has stopped; the CLI intentionally has no recursive discard command in M1.
+Golden import accepts only the complete manifest disk set from a staging
+directory outside `media/`, constructs and hashes it transactionally, refuses
+overwrite, and makes every disk group-readable but not writable. Session
+preparation uses exclusive reflinks where supported and fully copied, fsynced
+fallbacks otherwise. It hashes every golden before and after copying and never
+publishes session metadata for a partial copy.
 
 Open-source emulator provenance is independently pinned: the installed PDP-11
 binary has a root-owned `PROVENANCE` record naming upstream, version, full

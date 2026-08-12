@@ -15,11 +15,11 @@ emulator:
   profile: pdp11
   executable: /opt/unix-time-machine/simh/v3.12-3/pdp11
   configuration: simh.ini.in
+  installation_configuration: install.ini.in
   boot_device: RP0
-  disk:
+  storage:
     controller: RH70
     device: RP06
-    unit: RP0
 terminal:
   preferred: vt100
   fallback: ansi
@@ -31,13 +31,25 @@ media:
       filenames:
         - v7.tap
         - unix-v7.tap
-      size: null
-      sha256: null
+      size: 11711508
+      sha256: e2a6c5d420e2db62e992a95fce420bf311c3afa89b38381b8d212c92eef5a6cf
+      sha1: 8056d35a2cb6529330f26db5754e858c9eab0462
       required: true
       purpose: Operator-supplied UNIX Seventh Edition installation tape image
 prepared:
-  golden_filename: v7-rp06.dsk
-  session_filename: rp0.dsk
+  disks:
+    - id: root
+      unit: RP0
+      device: RP06
+      golden_filename: rp0.dsk
+      session_filename: rp0.dsk
+      runtime_token: "@SESSION_RP0@"
+    - id: usr
+      unit: RP1
+      device: RP06
+      golden_filename: rp1.dsk
+      session_filename: rp1.dsk
+      runtime_token: "@SESSION_RP1@"
 readiness:
   patterns:
     - "login:"

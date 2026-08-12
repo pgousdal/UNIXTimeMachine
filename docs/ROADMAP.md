@@ -4,17 +4,16 @@
 Repository contract, taxonomy, manifests, catalog, validation, policies, provisioning skeleton.
 
 ## M1 — UNIX V7 / PDP-11
-**IMPLEMENTED / AWAITING REAL-HOST REQUALIFICATION.** Reproducible SIMH
+**IMPLEMENTED / AWAITING HISTORICAL-SYSTEM QUALIFICATION.** Reproducible SIMH
 PDP-11/70 definition, external-media verification, immutable golden import,
 disposable sessions, bounded readiness, local console lifecycle, tests, and
-Debian 13 provisioning are implemented. Initial real-host qualification exposed
-that Trixie has no `simh` package and that root-level direct Ansible invocation
-did not load the repository config. The pinned source build and canonical
-`make provision` fixes are repository-validated but have not yet been rerun on
-the qualification VM. M1 becomes COMPLETE only after a
+Debian 13 provisioning are implemented. Debian 13 provisioning, its pinned Open
+SIMH build, provisioning idempotency, the executable, and host doctor after
+operator enrollment have passed on the qualification VM. M1 becomes COMPLETE
+only after a
 real host boots a disposable session to the V7 login state, stops it, recreates
 it from the golden baseline, and boots successfully a second time. Synthetic
-tests and an unpinned medium do not satisfy that gate.
+tests and media identity verification do not satisfy that gate.
 
 ## M2 — Session broker
 PTY/TCP handoff, timeouts, admission, audit, teardown.

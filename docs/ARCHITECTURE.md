@@ -21,11 +21,15 @@ Canonical host layout:
 └── reports/
 ```
 
-M1 data flow is `external media -> operator installation workspace -> read-only
-golden/v7-rp06.dsk -> sessions/<system>/<session>/rp0.dsk`. The committed SIMH
-template contains tokens only; the CLI resolves absolute runtime paths into a
-session-local `runtime.ini`. Emulator-specific configuration stays within the
-system definition and the small runtime-rendering boundary.
+M1 data flow is `external media -> operator staging disk set -> atomic read-only
+golden disk set -> complete disposable session disk set`. UNIX V7 has two RP06
+members: RP0 (root and swap) and RP1 (`/usr`). The manifest's ordered
+`prepared.disks` structure is system-neutral and records each unit, device,
+golden/session filename, and runtime token. Golden import constructs the whole
+set in a sibling transaction directory, hashes every member, and publishes it
+with one rename; session preparation rejects incomplete sets and copies every
+member before publishing session metadata. The committed SIMH templates contain
+tokens only; the CLI resolves session-local absolute paths.
 
 Persistent JSON is deterministic and atomically replaced. A foreground SIMH
 process retains the local terminal; PID/config/session metadata enables status

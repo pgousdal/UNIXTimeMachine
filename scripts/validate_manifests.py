@@ -24,6 +24,22 @@ def main():
                 if not isinstance(item["required"],bool): raise ValueError(f"{path}: media required must be bool")
                 if item.get("size") is not None and (not isinstance(item["size"],int) or item["size"] < 0): raise ValueError(f"{path}: bad media size")
                 if item.get("sha256") is not None and not re.fullmatch(r"[0-9a-fA-F]{64}",item["sha256"]): raise ValueError(f"{path}: bad sha256")
+                if item.get("sha1") is not None and not re.fullmatch(r"[0-9a-fA-F]{40}",item["sha1"]): raise ValueError(f"{path}: bad sha1")
+            prepared=data.get("prepared")
+            disks=prepared.get("disks",[]) if prepared is not None else []
+            if prepared is not None and (not isinstance(disks,list) or not disks): raise ValueError(f"{path}: prepared.disks must be a non-empty list")
+            seen_ids=set(); seen_units=set(); seen_files=set(); seen_tokens=set()
+            for disk in disks:
+                for key in ("id","unit","device","golden_filename","session_filename","runtime_token"):
+                    if not isinstance(disk.get(key),str) or not disk[key]: raise ValueError(f"{path}: prepared disk missing {key}")
+                if not re.fullmatch(r"[a-z0-9][a-z0-9-]*",disk["id"]): raise ValueError(f"{path}: unsafe disk id")
+                if not re.fullmatch(r"RP[0-7]",disk["unit"]): raise ValueError(f"{path}: unsupported disk unit")
+                if not re.fullmatch(r"@[A-Z0-9_]+@",disk["runtime_token"]): raise ValueError(f"{path}: bad runtime token")
+                if any("/" in disk[k] or "\\" in disk[k] for k in ("golden_filename","session_filename")): raise ValueError(f"{path}: unsafe disk filename")
+                if disk["id"] in seen_ids or disk["unit"] in seen_units or disk["runtime_token"] in seen_tokens: raise ValueError(f"{path}: duplicate prepared disk identity")
+                if disk["golden_filename"] in seen_files or disk["session_filename"] in seen_files: raise ValueError(f"{path}: duplicate prepared disk filename")
+                seen_ids.add(disk["id"]); seen_units.add(disk["unit"]); seen_tokens.add(disk["runtime_token"])
+                seen_files.update((disk["golden_filename"],disk["session_filename"]))
             manifests[sid]=data
         except Exception as e: errors.append(str(e))
     for p in sorted(INVENTORY_DIR.glob("*.yml")):

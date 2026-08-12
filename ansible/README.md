@@ -24,6 +24,18 @@ records provenance, removes the build tree, and creates the service account and
 protected directories. The verified source archive remains in the controlled
 system cache for auditing/reprovisioning. It installs no historical media.
 
+Provisioning does not select human operators. Enroll one existing local account
+explicitly and idempotently from the repository root:
+
+```sh
+make operator-add USER="$USER"
+```
+
+Log out completely and log in again (or start an equivalent new login session)
+before running operator commands; existing processes retain their old group set.
+The target validates that the account exists and never grants arbitrary users or
+broadens world permissions.
+
 No other Debian release, Ubuntu release, or other distribution is currently
 claimed as qualified. Do not add Bookworm, testing, unstable, or third-party
 binary repositories to provision this baseline.

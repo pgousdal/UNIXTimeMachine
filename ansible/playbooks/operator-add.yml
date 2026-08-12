@@ -1,0 +1,24 @@
+---
+- name: Enroll an explicitly named UNIX Time Machine operator
+  hosts: all
+  become: true
+  vars:
+    utm_operator_user: ""
+  tasks:
+    - name: Require one safe, explicit local account name
+      ansible.builtin.assert:
+        that:
+          - utm_operator_user is match('^[a-z_][a-z0-9_-]{0,31}$')
+        fail_msg: "Pass exactly one local account with -e utm_operator_user=<account>."
+
+    - name: Confirm that the operator account already exists
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ utm_operator_user }}"
+
+    - name: Add the operator to the service group
+      ansible.builtin.user:
+        name: "{{ utm_operator_user }}"
+        groups:
+          - unix-time-machine
+        append: true

@@ -32,17 +32,24 @@ class M1Tests(unittest.TestCase):
     def test_missing_media(self):
         self.assertEqual(utmlib.verify_media("unix-v7-pdp11", self.root)[0].status, "MISSING")
 
-    def test_unpinned_hash_reports_hash_without_claiming_pass(self):
+    def test_canonical_media_identity_is_pinned(self):
+        item = self.manifest()["media"]["items"][0]
+        self.assertEqual(item["size"], 11711508)
+        self.assertEqual(item["sha256"], "e2a6c5d420e2db62e992a95fce420bf311c3afa89b38381b8d212c92eef5a6cf")
+        self.assertEqual(item["sha1"], "8056d35a2cb6529330f26db5754e858c9eab0462")
+
+    def test_noncanonical_media_fails_without_authenticity_claim(self):
         directory = self.root / "media" / "unix-v7-pdp11"; directory.mkdir(parents=True)
         (directory / "v7.tap").write_bytes(b"synthetic")
         result = utmlib.verify_media("unix-v7-pdp11", self.root)[0]
-        self.assertEqual(result.status, "UNPINNED")
-        self.assertIn(hashlib.sha256(b"synthetic").hexdigest(), result.detail)
+        self.assertEqual(result.status, "FAIL")
+        self.assertIn("expected 11711508", result.detail)
 
     def test_hash_match_and_mismatch(self):
         directory = self.root / "media" / "unix-v7-pdp11"; directory.mkdir(parents=True)
         (directory / "v7.tap").write_bytes(b"synthetic")
         manifest = self.manifest(); item = manifest["media"]["items"][0]
+        item["size"] = len(b"synthetic")
         item["sha256"] = hashlib.sha256(b"synthetic").hexdigest()
         with mock.patch.object(utmlib, "system_manifest", return_value=(Path("system.yml"), manifest)):
             self.assertEqual(utmlib.verify_media("unix-v7-pdp11", self.root)[0].status, "PASS")
@@ -50,12 +57,15 @@ class M1Tests(unittest.TestCase):
             self.assertEqual(utmlib.verify_media("unix-v7-pdp11", self.root)[0].status, "FAIL")
 
     def test_session_copy_and_refusal_to_overwrite_preserve_golden(self):
-        golden = self.root / "golden" / "unix-v7-pdp11" / "v7-rp06.dsk"
-        golden.parent.mkdir(parents=True); golden.write_bytes(b"golden-data"); golden.chmod(0o440)
-        before = utmlib.sha256(golden)
+        golden_dir = self.root / "golden" / "unix-v7-pdp11"
+        golden_dir.mkdir(parents=True)
+        for name in ("rp0.dsk", "rp1.dsk"):
+            (golden_dir / name).write_bytes(("golden-" + name).encode()); (golden_dir / name).chmod(0o440)
+        before = {name: utmlib.sha256(golden_dir / name) for name in ("rp0.dsk", "rp1.dsk")}
         workspace, _ = utmlib.prepare_session("unix-v7-pdp11", "test-session", self.root)
         (workspace / "rp0.dsk").write_bytes(b"changed session")
-        self.assertEqual(utmlib.sha256(golden), before)
+        self.assertTrue((workspace / "rp1.dsk").is_file())
+        self.assertEqual({name: utmlib.sha256(golden_dir / name) for name in before}, before)
         with self.assertRaisesRegex(utmlib.UTMError, "overwrite"):
             utmlib.prepare_session("unix-v7-pdp11", "test-session", self.root)
 
@@ -63,8 +73,17 @@ class M1Tests(unittest.TestCase):
         media = self.root / "media" / "prepared.dsk"; media.parent.mkdir(); media.write_bytes(b"x")
         with self.assertRaisesRegex(utmlib.UTMError, "source media"):
             utmlib.import_golden("unix-v7-pdp11", media, self.root)
-        source = self.root / "staging.dsk"; source.write_bytes(b"prepared")
+        source = self.root / "staging"; source.mkdir()
+        (source / "rp0.dsk").write_bytes(b"root")
+        with self.assertRaisesRegex(utmlib.UTMError, "incomplete"):
+            utmlib.import_golden("unix-v7-pdp11", source, self.root)
+        (source / "rp1.dsk").write_bytes(b"usr")
         utmlib.import_golden("unix-v7-pdp11", source, self.root)
+        golden_dir = self.root / "golden" / "unix-v7-pdp11"
+        self.assertEqual((golden_dir / "rp0.dsk").stat().st_mode & 0o777, 0o440)
+        self.assertEqual((golden_dir / "rp1.dsk").stat().st_mode & 0o777, 0o440)
+        metadata = __import__("json").loads((golden_dir / "metadata.json").read_text())
+        self.assertEqual(set(metadata["disks"]), {"root", "usr"})
         with self.assertRaisesRegex(utmlib.UTMError, "overwrite"):
             utmlib.import_golden("unix-v7-pdp11", source, self.root)
 
@@ -74,14 +93,59 @@ class M1Tests(unittest.TestCase):
                 utmlib.prepare_session(value, "safe", self.root)
 
     def test_runtime_generation(self):
-        golden = self.root / "golden" / "unix-v7-pdp11" / "v7-rp06.dsk"
-        golden.parent.mkdir(parents=True); golden.write_bytes(b"disk")
+        golden = self.root / "golden" / "unix-v7-pdp11"
+        golden.mkdir(parents=True)
+        (golden / "rp0.dsk").write_bytes(b"root")
+        (golden / "rp1.dsk").write_bytes(b"usr")
         utmlib.prepare_session("unix-v7-pdp11", "runtime-test", self.root)
         config = utmlib.render_runtime("unix-v7-pdp11", "runtime-test", self.root)
         text = config.read_text()
         self.assertIn("set cpu 11/70", text); self.assertIn("set rp0 rp06", text)
         self.assertIn(str(self.root / "sessions" / "unix-v7-pdp11" / "runtime-test" / "rp0.dsk"), text)
-        self.assertNotIn("@SESSION_DISK@", text)
+        self.assertIn(str(self.root / "sessions" / "unix-v7-pdp11" / "runtime-test" / "rp1.dsk"), text)
+        self.assertNotIn("@SESSION_RP", text)
+        self.assertNotIn(str(golden), text)
+
+    def test_partial_session_set_is_rejected(self):
+        workspace = self.root / "sessions" / "unix-v7-pdp11" / "partial"
+        workspace.mkdir(parents=True); (workspace / "rp0.dsk").write_bytes(b"root")
+        with self.assertRaisesRegex(utmlib.UTMError, "incomplete session"):
+            utmlib.render_runtime("unix-v7-pdp11", "partial", self.root)
+
+    def test_failed_session_copy_is_not_published(self):
+        golden = self.root / "golden" / "unix-v7-pdp11"; golden.mkdir(parents=True)
+        (golden / "rp0.dsk").write_bytes(b"root"); (golden / "rp1.dsk").write_bytes(b"usr")
+        real_copy = utmlib.copy_exclusive
+        calls = 0
+        def fail_second(source, destination):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError("synthetic copy failure")
+            return real_copy(source, destination)
+        with mock.patch.object(utmlib, "copy_exclusive", side_effect=fail_second), self.assertRaises(OSError):
+            utmlib.prepare_session("unix-v7-pdp11", "failed", self.root)
+        parent = self.root / "sessions" / "unix-v7-pdp11"
+        self.assertFalse((parent / "failed").exists())
+        self.assertEqual(list(parent.glob(".failed.prepare-*")), [])
+
+    def test_install_staging_is_external_networkless_and_tape_read_only(self):
+        media = self.root / "media" / "unix-v7-pdp11"; media.mkdir(parents=True)
+        tape = media / "v7.tap"; tape.write_bytes(b"synthetic")
+        manifest = self.manifest(); item = manifest["media"]["items"][0]
+        item["size"] = tape.stat().st_size; item["sha256"] = utmlib.sha256(tape)
+        with mock.patch.object(utmlib, "system_manifest", return_value=(ROOT / "systems/unix-v7-pdp11/system.yml", manifest)):
+            config = utmlib.prepare_install("unix-v7-pdp11", self.root / "staging", self.root)
+        text = config.read_text()
+        self.assertIn("set cpu 11/70", text); self.assertIn("set cpu 2M", text)
+        self.assertIn("set rp0 rp06", text); self.assertIn("set rp1 rp06", text)
+        self.assertIn("set xq disabled", text); self.assertIn("set xu disabled", text)
+        self.assertIn("attach -r tm0", text)
+        self.assertNotIn("@", text)
+        self.assertFalse((self.root / "media/unix-v7-pdp11/rp0.dsk").exists())
+        for protected in (self.root / "media/staging", self.root / "golden/staging"):
+            with self.assertRaisesRegex(utmlib.UTMError, "outside"):
+                utmlib.prepare_install("unix-v7-pdp11", protected, self.root)
 
     def test_missing_simh_executable(self):
         manifest = self.manifest()
@@ -119,6 +183,21 @@ class M1Tests(unittest.TestCase):
             with redirect_stdout(output):
                 self.assertEqual(utm_cli.cmd_doctor(Namespace(root=str(self.root))), 1)
         self.assertIn("FAIL    missing or non-executable SIMH executable", output.getvalue())
+
+    def test_doctor_controls_permission_error_and_is_read_only(self):
+        output = StringIO()
+        real_stat = Path.stat
+        denied = self.root / "media"
+        def selective_stat(path, *args, **kwargs):
+            if path == denied:
+                raise PermissionError(13, "Permission denied", str(path))
+            return real_stat(path, *args, **kwargs)
+        with mock.patch.object(Path, "stat", selective_stat), \
+             mock.patch.object(utm_cli, "find_emulator", side_effect=utmlib.UTMError("missing")), \
+             redirect_stdout(output):
+            self.assertEqual(utm_cli.cmd_doctor(Namespace(root=str(self.root))), 1)
+        self.assertIn(f"FAIL    directory {denied}: permission denied", output.getvalue())
+        self.assertEqual(list(self.root.iterdir()), [])
 
     def test_bounded_readiness(self):
         start = time.monotonic()

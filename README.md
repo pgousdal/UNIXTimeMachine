@@ -18,13 +18,14 @@ See `docs/ROADMAP.md`, `docs/ARCHITECTURE.md`, `docs/PRESERVATION.md`, `docs/SEC
 
 M1 implements the first operator-controlled exhibit: UNIX Seventh Edition on a
 SIMH PDP-11/70. Its supported host baseline is Debian 13 (Trixie). It is
-**IMPLEMENTED / AWAITING REAL-HOST REQUALIFICATION**. No
+**IMPLEMENTED / AWAITING HISTORICAL-SYSTEM QUALIFICATION**. No
 historical media is included, and repository tests do not claim that UNIX booted.
 
 ```sh
 make check
 python3 scripts/utm.py doctor       # expected to fail on a clean host
 make provision
+make operator-add USER="$USER"       # explicit enrollment; then log out/in
 python3 scripts/utm.py doctor       # expected host PASS
 python3 scripts/utm.py catalog
 python3 scripts/utm.py media verify unix-v7-pdp11

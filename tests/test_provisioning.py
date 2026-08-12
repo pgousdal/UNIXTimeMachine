@@ -65,6 +65,18 @@ class ProvisioningContractTests(unittest.TestCase):
         expected = expected.replace("{{ utm_simh_version }}", self.defaults["utm_simh_version"])
         self.assertEqual(manifest["emulator"]["executable"], expected)
 
+    def test_operator_enrollment_is_explicit_and_idempotent(self):
+        makefile = (ROOT / "Makefile").read_text()
+        self.assertIn("operator-add:", makefile)
+        self.assertIn("utm_operator_user=$(USER)", makefile)
+        play = yaml.safe_load((ROOT / "ansible/playbooks/operator-add.yml").read_text())[0]
+        tasks = play["tasks"]
+        user = next(task["ansible.builtin.user"] for task in tasks if "ansible.builtin.user" in task)
+        self.assertEqual(user["name"], "{{ utm_operator_user }}")
+        self.assertEqual(user["groups"], ["unix-time-machine"])
+        self.assertTrue(user["append"])
+        self.assertTrue(any("ansible.builtin.getent" in task for task in tasks))
+
 
 if __name__ == "__main__":
     unittest.main()

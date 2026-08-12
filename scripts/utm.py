@@ -7,13 +7,14 @@ import datetime as dt
 import grp
 import os
 import pwd
+import stat as statmod
 import subprocess
 import sys
 from pathlib import Path
 
 from manifestlib import system_manifest
 from utmlib import (DEFAULT_ROOT, UTMError, atomic_json, find_emulator, import_golden,
-                    pid_alive, prepare_session, readiness, render_runtime, safe_id,
+                    pid_alive, prepare_install, prepare_session, readiness, render_runtime, safe_id,
                     stop_process, verify_media)
 
 
@@ -37,8 +38,16 @@ def cmd_doctor(args):
         path = root / directory
         detail = ""
         status = "FAIL"
-        if path.is_dir():
+        try:
             stat = path.stat()
+            if not statmod.S_ISDIR(stat.st_mode):
+                stat = None
+        except PermissionError:
+            stat = None
+            detail = ": permission denied"
+        except OSError:
+            stat = None
+        if stat is not None:
             actual_owner = pwd.getpwuid(stat.st_uid).pw_name
             actual_group = grp.getgrgid(stat.st_gid).gr_name
             actual_mode = stat.st_mode & 0o7777
@@ -76,8 +85,8 @@ def cmd_media_verify(args):
 
 
 def cmd_golden_import(args):
-    path, method = import_golden(args.system_id, Path(args.source), root_path(args))
-    print(f"PASS    imported prepared disk as immutable golden ({method}): {path}")
+    path, methods = import_golden(args.system_id, Path(args.source), root_path(args))
+    print(f"PASS    imported complete prepared disk set as immutable golden ({', '.join(methods)}): {path}")
     return 0
 
 
@@ -87,8 +96,15 @@ def default_session_id():
 
 def cmd_session_prepare(args):
     session_id = args.session_id or default_session_id()
-    workspace, method = prepare_session(args.system_id, session_id, root_path(args))
-    print(f"PASS    session {session_id} prepared using {method}: {workspace}")
+    workspace, methods = prepare_session(args.system_id, session_id, root_path(args))
+    print(f"PASS    session {session_id} prepared using {', '.join(methods)}: {workspace}")
+    return 0
+
+
+def cmd_install_prepare(args):
+    config = prepare_install(args.system_id, Path(args.staging), root_path(args))
+    print(f"PASS    installation hardware staged: {config}")
+    print("HUMAN_REQUIRED: run the canonical SIMH executable with this configuration and follow the documented guest installation steps")
     return 0
 
 
@@ -183,6 +199,8 @@ def parser():
     verify = media.add_parser("verify"); verify.add_argument("system_id"); verify.set_defaults(func=cmd_media_verify)
     golden = sub.add_parser("golden").add_subparsers(dest="golden_command", required=True)
     imp = golden.add_parser("import"); imp.add_argument("system_id"); imp.add_argument("source"); imp.set_defaults(func=cmd_golden_import)
+    install = sub.add_parser("install").add_subparsers(dest="install_command", required=True)
+    stage = install.add_parser("prepare"); stage.add_argument("system_id"); stage.add_argument("staging"); stage.set_defaults(func=cmd_install_prepare)
     session = sub.add_parser("session").add_subparsers(dest="session_command", required=True)
     prep = session.add_parser("prepare"); prep.add_argument("system_id"); prep.add_argument("--session-id"); prep.set_defaults(func=cmd_session_prepare)
     system = sub.add_parser("system").add_subparsers(dest="system_command", required=True)

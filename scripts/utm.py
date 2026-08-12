@@ -102,9 +102,10 @@ def cmd_session_prepare(args):
 
 
 def cmd_install_prepare(args):
-    config = prepare_install(args.system_id, Path(args.staging), root_path(args))
-    print(f"PASS    installation hardware staged: {config}")
-    print("HUMAN_REQUIRED: run the canonical SIMH executable with this configuration and follow the documented guest installation steps")
+    bootstrap, runtime = prepare_install(args.system_id, Path(args.staging), root_path(args))
+    print(f"PASS    installation bootstrap hardware staged: {bootstrap}")
+    print(f"PASS    installed-system runtime verification hardware staged: {runtime}")
+    print("HUMAN_REQUIRED: run the bootstrap configuration first and follow the documented guest installation and phase-transition steps")
     return 0
 
 

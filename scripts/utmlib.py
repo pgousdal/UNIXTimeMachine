@@ -226,7 +226,7 @@ def render_runtime(system_id: str, session_id: str, host_root: Path) -> Path:
     return output
 
 
-def prepare_install(system_id: str, staging: Path, host_root: Path) -> Path:
+def prepare_install(system_id: str, staging: Path, host_root: Path) -> tuple[Path, Path]:
     manifest_path, manifest = system_manifest(safe_id(system_id, "system id"))
     staging = staging.resolve()
     for protected in ((host_root / "media").resolve(), (host_root / "golden").resolve()):
@@ -243,21 +243,32 @@ def prepare_install(system_id: str, staging: Path, host_root: Path) -> Path:
     tape = next(path for path in (media_dir / name for name in item["filenames"]) if path.is_file())
     staging.mkdir(parents=True, mode=0o750)
     try:
-        template = manifest_path.parent / manifest["emulator"]["installation_configuration"]
-        config = template.read_text(encoding="utf-8")
-        replacements = {"@INSTALL_TAPE@": str(tape.resolve()),
-                        "@INSTALL_CONSOLE_LOG@": str((staging / "install-console.log").resolve())}
+        emulator = manifest["emulator"]
+        templates = (
+            (emulator["installation_bootstrap_configuration"], "install-bootstrap.ini"),
+            (emulator["installation_runtime_configuration"], "install-runtime.ini"),
+        )
+        replacements = {
+            "@INSTALL_TAPE@": str(tape.resolve()),
+            "@INSTALL_BOOTSTRAP_CONSOLE_LOG@": str((staging / "install-bootstrap-console.log").resolve()),
+            "@INSTALL_RUNTIME_CONSOLE_LOG@": str((staging / "install-runtime-console.log").resolve()),
+        }
         for disk in prepared_disks(manifest):
             replacements[f"@STAGING_{disk['unit']}@"] = str((staging / disk["golden_filename"]).resolve())
-        for token, value in replacements.items():
+        for value in replacements.values():
             if any(char in value for char in "\n\r\t ;\""):
                 raise UTMError(f"installation path contains characters unsafe for SIMH: {value}")
-            config = config.replace(token, value)
-        if "@" in config:
-            raise UTMError("unresolved token in SIMH installation configuration")
-        output = staging / "install.ini"
-        output.write_text(config, encoding="utf-8")
-        return output
+        outputs = []
+        for template_name, output_name in templates:
+            config = (manifest_path.parent / template_name).read_text(encoding="utf-8")
+            for token, value in replacements.items():
+                config = config.replace(token, value)
+            if "@" in config:
+                raise UTMError("unresolved token in SIMH installation configuration")
+            output = staging / output_name
+            output.write_text(config, encoding="utf-8")
+            outputs.append(output)
+        return outputs[0], outputs[1]
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
         raise

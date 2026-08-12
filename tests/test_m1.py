@@ -100,7 +100,10 @@ class M1Tests(unittest.TestCase):
         utmlib.prepare_session("unix-v7-pdp11", "runtime-test", self.root)
         config = utmlib.render_runtime("unix-v7-pdp11", "runtime-test", self.root)
         text = config.read_text()
-        self.assertIn("set cpu 11/70", text); self.assertIn("set rp0 rp06", text)
+        self.assertIn("set cpu 11/70", text); self.assertIn("set cpu 2M", text)
+        self.assertIn("set rp0 rp06", text); self.assertIn("set rp1 rp06", text)
+        self.assertIn("set tm disabled", text)
+        self.assertIn("set xq disabled", text); self.assertIn("set xu disabled", text)
         self.assertIn(str(self.root / "sessions" / "unix-v7-pdp11" / "runtime-test" / "rp0.dsk"), text)
         self.assertIn(str(self.root / "sessions" / "unix-v7-pdp11" / "runtime-test" / "rp1.dsk"), text)
         self.assertNotIn("@SESSION_RP", text)
@@ -129,19 +132,34 @@ class M1Tests(unittest.TestCase):
         self.assertFalse((parent / "failed").exists())
         self.assertEqual(list(parent.glob(".failed.prepare-*")), [])
 
-    def test_install_staging_is_external_networkless_and_tape_read_only(self):
+    def test_install_staging_has_explicit_bootstrap_and_runtime_phases(self):
         media = self.root / "media" / "unix-v7-pdp11"; media.mkdir(parents=True)
         tape = media / "v7.tap"; tape.write_bytes(b"synthetic")
         manifest = self.manifest(); item = manifest["media"]["items"][0]
         item["size"] = tape.stat().st_size; item["sha256"] = utmlib.sha256(tape)
         with mock.patch.object(utmlib, "system_manifest", return_value=(ROOT / "systems/unix-v7-pdp11/system.yml", manifest)):
-            config = utmlib.prepare_install("unix-v7-pdp11", self.root / "staging", self.root)
-        text = config.read_text()
-        self.assertIn("set cpu 11/70", text); self.assertIn("set cpu 2M", text)
-        self.assertIn("set rp0 rp06", text); self.assertIn("set rp1 rp06", text)
-        self.assertIn("set xq disabled", text); self.assertIn("set xu disabled", text)
-        self.assertIn("attach -r tm0", text)
-        self.assertNotIn("@", text)
+            bootstrap, runtime = utmlib.prepare_install(
+                "unix-v7-pdp11", self.root / "staging", self.root)
+        self.assertEqual(bootstrap.name, "install-bootstrap.ini")
+        self.assertEqual(runtime.name, "install-runtime.ini")
+        bootstrap_text = bootstrap.read_text()
+        runtime_text = runtime.read_text()
+        self.assertIn("set cpu 11/45", bootstrap_text)
+        self.assertIn("set cpu 256K", bootstrap_text)
+        self.assertNotIn("set cpu 11/70", bootstrap_text)
+        self.assertIn("set cpu 11/70", runtime_text)
+        self.assertIn("set cpu 2M", runtime_text)
+        self.assertNotIn("set cpu 11/45", runtime_text)
+        for text in (bootstrap_text, runtime_text):
+            self.assertIn("set rp0 rp06", text); self.assertIn("set rp1 rp06", text)
+            self.assertIn(str(self.root / "staging/rp0.dsk"), text)
+            self.assertIn(str(self.root / "staging/rp1.dsk"), text)
+            self.assertIn("set xq disabled", text); self.assertIn("set xu disabled", text)
+            self.assertNotIn("@", text)
+        self.assertIn("attach -r tm0", bootstrap_text)
+        self.assertIn(str(tape), bootstrap_text)
+        self.assertIn("set tm disabled", runtime_text)
+        self.assertNotIn("attach -r tm0", runtime_text)
         self.assertFalse((self.root / "media/unix-v7-pdp11/rp0.dsk").exists())
         for protected in (self.root / "media/staging", self.root / "golden/staging"):
             with self.assertRaisesRegex(utmlib.UTMError, "outside"):

@@ -15,7 +15,8 @@ emulator:
   profile: pdp11
   executable: /opt/unix-time-machine/simh/v3.12-3/pdp11
   configuration: simh.ini.in
-  installation_configuration: install.ini.in
+  installation_bootstrap_configuration: install-bootstrap.ini.in
+  installation_runtime_configuration: install-runtime.ini.in
   boot_device: RP0
   storage:
     controller: RH70

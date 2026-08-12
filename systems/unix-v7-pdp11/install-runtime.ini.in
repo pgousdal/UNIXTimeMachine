@@ -1,0 +1,36 @@
+; UNIX Time Machine: HUMAN_REQUIRED installed-system verification phase
+; Run only after completing and syncing the tape/bootstrap phase, then quitting SIMH.
+; The same two staging RP06 images are retained while the CPU changes to runtime.
+set cpu 11/70
+set cpu 2M
+set cpu idle
+set clk 60Hz
+set lpt disabled
+set ptr disabled
+set ptp disabled
+set cr disabled
+set rk disabled
+set rl disabled
+set hk disabled
+set rx disabled
+set rq disabled
+set tq disabled
+set tm disabled
+set ts disabled
+set dz disabled
+set vh disabled
+set xq disabled
+set xu disabled
+set rp enabled
+set rp0 rp06
+set rp1 rp06
+set rp2 disabled
+set rp3 disabled
+set rp4 disabled
+set rp5 disabled
+set rp6 disabled
+set rp7 disabled
+set console log=@INSTALL_RUNTIME_CONSOLE_LOG@
+attach rp0 @STAGING_RP0@
+attach rp1 @STAGING_RP1@
+boot rp0

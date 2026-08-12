@@ -1,7 +1,9 @@
-; UNIX Time Machine: HUMAN_REQUIRED UNIX V7 installation hardware
-; Generated into an operator staging directory. The tape is attached read-only.
-set cpu 11/70
-set cpu 2M
+; UNIX Time Machine: HUMAN_REQUIRED UNIX V7 tape/bootstrap phase
+; V7 standalone installation uses the documented Open SIMH PDP-11/45 profile.
+; Open SIMH's initial 256 KiB memory size is the maximum for an 11/45.
+; The tape is attached read-only; both RP06 images continue into runtime verification.
+set cpu 11/45
+set cpu 256K
 set cpu idle
 set clk 60Hz
 set lpt disabled
@@ -29,7 +31,7 @@ set rp5 disabled
 set rp6 disabled
 set rp7 disabled
 set tm enabled
-set console log=@INSTALL_CONSOLE_LOG@
+set console log=@INSTALL_BOOTSTRAP_CONSOLE_LOG@
 attach rp0 @STAGING_RP0@
 attach rp1 @STAGING_RP1@
 attach -r tm0 @INSTALL_TAPE@

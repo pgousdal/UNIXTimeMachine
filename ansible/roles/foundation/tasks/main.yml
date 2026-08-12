@@ -141,11 +141,6 @@
   loop:
     - media
     - golden
-    - state
-    - sessions
-    - snapshots
-    - logs
-    - reports
 
 - name: Create per-system M1 directories
   ansible.builtin.file:
@@ -174,9 +169,19 @@
     - reports
 
 - name: Verify the canonical PDP-11 emulator is runnable
-  ansible.builtin.command:
-    argv:
-      - "{{ utm_simh_executable }}"
-      - -v
-  register: utm_pdp11
+
+  ansible.builtin.shell: |
+
+    set -o pipefail
+
+    printf 'show version\nquit\n' | timeout 5s /opt/unix-time-machine/simh/v3.12-3/pdp11
+
+  args:
+
+    executable: /bin/bash
+
+  register: simh_runtime_check
+
   changed_when: false
+
+  failed_when: simh_runtime_check.rc != 0

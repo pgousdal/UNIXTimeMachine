@@ -17,16 +17,37 @@ class PreparedSession:
     golden_sha256: dict[str, str]
 
 
+@dataclass(frozen=True)
+class ShutdownProtocol:
+    requires_guest_sync: bool
+    monitor_enter: bytes
+    monitor_prompt: bytes
+    monitor_quit: bytes
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "requires_guest_sync": self.requires_guest_sync,
+            "monitor_enter_hex": self.monitor_enter.hex(),
+            "monitor_prompt_hex": self.monitor_prompt.hex(),
+            "monitor_quit_hex": self.monitor_quit.hex(),
+        }
+
+
 class Backend(ABC):
     @abstractmethod
     def prepare(self, system_id: str, session_id: str, root: Path) -> PreparedSession:
         raise NotImplementedError
 
-    def safe_shutdown_bytes(self) -> bytes:
-        return b"\x05quit\r"
+    @abstractmethod
+    def shutdown_protocol(self) -> ShutdownProtocol:
+        """Describe the backend-specific, confirmation-gated stop handshake."""
+        raise NotImplementedError
 
 
 class SimhBackend(Backend):
+    def shutdown_protocol(self) -> ShutdownProtocol:
+        return ShutdownProtocol(True, b"\x05", b"sim>", b"quit\r")
+
     def prepare(self, system_id: str, session_id: str, root: Path) -> PreparedSession:
         _, manifest = system_manifest(system_id)
         workspace, methods = prepare_session(system_id, session_id, root)

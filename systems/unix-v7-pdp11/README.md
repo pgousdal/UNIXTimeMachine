@@ -5,9 +5,11 @@ Status: **COMPLETE**.
 M1 is complete; the M2 broker adapter is implemented but awaits the real-host
 qualification gate in `docs/ROADMAP.md`. The original M1 workflow below remains
 valid. For M2, request a session, attach, enter `boot`, `hp(0,0)unix`, and Ctrl-D
-as before, then detach with Ctrl-]. After guest `sync` commands, `broker stop`
-uses Ctrl-E plus `quit`, confirms exit, discards the writable session set and
-marks it released. Do not use that stop until the guest has been synced.
+as before, then detach with Ctrl-]. After guest `sync` commands, `broker stop
+--guest-synced` sends Ctrl-E, waits boundedly for the live SIMH `sim>` prompt,
+sends `quit` only after confirmation, confirms emulator exit, discards the
+writable session set and marks it released. The flag attests filesystem sync,
+not a complete V7 OS shutdown.
 
 The first M2 real-host qualification session, `unix-v7-pdp11-000001` (Open
 SIMH PID 9058), reached `mem = 2020544` and `login:` after that manual boot. It
@@ -20,8 +22,13 @@ failed/missing-console attaches cleanly, and sends no automatic shutdown input
 when guest sync is unconfirmed. A fresh real-host run is still required; M2
 remains **IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION**.
 
-Use this exact sequence for the fresh M2 rerun (do not reuse or release the
-preserved `unix-v7-pdp11-000001` record):
+The second attempt, `m2-qualification-2` (preserved emulator PID 9123), proved
+boot, readiness, login, `/usr`, detach/reattach, and four `sync` commands. It is
+also evidence: its old supervisor sent Ctrl-E and `quit` as one blind sequence,
+allowing the V7 shell to receive `quit`. Do not reuse, release, or run the new
+recovery command against either preserved qualification record.
+
+Use this exact sequence for a fresh M2 rerun:
 
 ```sh
 cd /path/to/UNIXTimeMachine
@@ -29,23 +36,24 @@ export UTM_ROOT=/srv/unix-time-machine
 sha256sum "$UTM_ROOT/golden/unix-v7-pdp11/rp0.dsk" \
           "$UTM_ROOT/golden/unix-v7-pdp11/rp1.dsk"
 python3 scripts/utm.py broker config
-python3 scripts/utm.py broker request unix-v7-pdp11 --session-id m2-qualification-2
-python3 scripts/utm.py broker status m2-qualification-2
-python3 scripts/utm.py broker attach m2-qualification-2
+python3 scripts/utm.py broker request unix-v7-pdp11 --session-id m2-qualification-3
+python3 scripts/utm.py broker status m2-qualification-3
+python3 scripts/utm.py broker attach m2-qualification-3
 ```
 
 At the SIMH console enter `boot`, then `hp(0,0)unix`, then Ctrl-D. Confirm
-`mem = 2020544` and `login:`. Log in as root, verify `/usr`, run `sync` twice,
+`mem = 2020544` and `login:`. Log in as root, verify `/usr`, run `sync` four times,
 and detach with Ctrl-]. Then run:
 
 ```sh
-python3 scripts/utm.py broker status m2-qualification-2
-python3 scripts/utm.py broker stop m2-qualification-2
-python3 scripts/utm.py broker release m2-qualification-2
-python3 scripts/utm.py broker status m2-qualification-2
+python3 scripts/utm.py broker status m2-qualification-3
+python3 scripts/utm.py broker stop m2-qualification-3 --guest-synced
+python3 scripts/utm.py broker release m2-qualification-3
+python3 scripts/utm.py broker status m2-qualification-3
 sha256sum "$UTM_ROOT/golden/unix-v7-pdp11/rp0.dsk" \
           "$UTM_ROOT/golden/unix-v7-pdp11/rp1.dsk"
-grep 'm2-qualification-2' "$UTM_ROOT/logs/broker-audit.jsonl"
+grep 'm2-qualification-3' "$UTM_ROOT/logs/broker-audit.jsonl"
+cat "$UTM_ROOT/logs/sessions/m2-qualification-3/supervisor.log"
 ```
 
 ## Canonical definition

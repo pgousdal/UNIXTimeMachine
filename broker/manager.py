@@ -69,7 +69,7 @@ class Broker:
             socket_path = self.store.directory / f"{session_id}.sock"
             transcript = self.root / "logs" / "sessions" / session_id / "console.log"
             launch = {"command": prepared.command, "patterns": prepared.readiness_patterns,
-                      "shutdown_hex": backend.safe_shutdown_bytes().hex()}
+                      "shutdown": backend.shutdown_protocol().as_dict()}
             atomic_json(prepared.workspace / "broker-launch.json", launch)
             with self.store.locked():
                 record = self.store.load(session_id)
@@ -121,18 +121,36 @@ class Broker:
     def list(self) -> list[SessionRecord]:
         return self.store.all()
 
-    def stop(self, session_id: str) -> SessionRecord:
+    def stop(self, session_id: str, guest_synced: bool = False, recovery: bool = False) -> SessionRecord:
         record = self.get(session_id)
         if record.state in {SessionState.RESETTING.value, SessionState.RELEASED.value}:
             return record
+        if record.state == SessionState.FAILED.value and not recovery:
+            raise UTMError("session is FAILED; ordinary stop is refused; inspect evidence or use broker recover-stop --guest-synced")
+        if recovery and record.state != SessionState.FAILED.value:
+            raise UTMError("recover-stop requires a FAILED session")
+        launch_path = Path(record.workspace) / "broker-launch.json"
+        try:
+            launch = json.loads(launch_path.read_text(encoding="utf-8"))
+            requires_sync = bool(launch["shutdown"]["requires_guest_sync"])
+        except (OSError, KeyError, TypeError, ValueError) as exc:
+            raise UTMError(f"shutdown protocol unavailable; session preserved: {exc}") from exc
+        if requires_sync and not guest_synced:
+            raise UTMError("refusing live UNIX V7 stop without --guest-synced; the flag attests only that guest filesystems were synced")
         if not process_matches(record.supervisor_pid, record.supervisor_start_ticks):
             raise UTMError("session supervisor is not running; reconcile before teardown")
+        atomic_json(Path(record.workspace) / "broker-stop.json", {
+            "guest_synced": bool(guest_synced), "recovery": bool(recovery),
+        })
         os.kill(record.supervisor_pid, signal.SIGTERM)
         deadline = time.monotonic() + self.config.shutdown_timeout + 2
+        recovery_started = not recovery
         while time.monotonic() < deadline:
             current = self.get(session_id)
+            if current.state == SessionState.STOPPING.value:
+                recovery_started = True
             if current.state in {SessionState.RESETTING.value, SessionState.RELEASED.value,
-                                 SessionState.FAILED.value}:
+                                 SessionState.FAILED.value} and recovery_started:
                 return current
             time.sleep(0.05)
         self.store.audit("timeout", self.get(session_id), {"kind": "shutdown-wait"})

@@ -33,6 +33,13 @@ class Supervisor:
         self.ready = False
         self.failed = False
         self.readiness_deadline = None
+        self.control_log_path = None
+
+    def control_log(self, event: str) -> None:
+        if self.control_log_path is None:
+            return
+        with self.control_log_path.open("a", encoding="utf-8") as stream:
+            stream.write(f"{utc_now()} {event}\n")
 
     def update(self, **changes):
         with self.store.locked():
@@ -68,6 +75,7 @@ class Supervisor:
         master, slave = pty.openpty()
         transcript_path = Path(record.transcript)
         transcript_path.parent.mkdir(parents=True, exist_ok=True)
+        self.control_log_path = transcript_path.parent / "supervisor.log"
         transcript = transcript_path.open("ab", buffering=0)
         process = subprocess.Popen(spec["command"], stdin=slave, stdout=slave, stderr=slave,
                                    start_new_session=True, close_fds=True)
@@ -82,6 +90,9 @@ class Supervisor:
         selector.register(master, selectors.EVENT_READ, "console")
         tail = b""
         shutdown_deadline = None
+        shutdown_phase = None
+        shutdown_tail = b""
+        shutdown = spec["shutdown"]
         try:
             while True:
                 now = time.monotonic()
@@ -90,10 +101,25 @@ class Supervisor:
                     if current.state in {SessionState.STARTING.value, SessionState.READY.value,
                                          SessionState.ACTIVE.value, SessionState.FAILED.value}:
                         self.transition(SessionState.STOPPING, "stop", {"reason": self.stop_reason})
-                    os.write(master, bytes.fromhex(spec["shutdown_hex"]))
+                    try:
+                        request = json.loads((Path(record.workspace) / "broker-stop.json").read_text())
+                    except (OSError, ValueError):
+                        request = {}
+                    self.control_log("stop request accepted")
+                    if request.get("guest_synced"):
+                        self.control_log("guest-sync attestation present")
+                    os.write(master, bytes.fromhex(shutdown["monitor_enter_hex"]))
+                    self.control_log("Ctrl-E sent")
+                    shutdown_phase = "monitor"
+                    shutdown_tail = b""
                     shutdown_deadline = now + self.config.shutdown_timeout
                 if shutdown_deadline is not None and now >= shutdown_deadline and process.poll() is None:
-                    reason = "safe shutdown unconfirmed; process left running for inspection"
+                    if shutdown_phase == "monitor":
+                        self.control_log("monitor prompt not observed")
+                        reason = "SIMH monitor entry unconfirmed; process left running for inspection"
+                    else:
+                        reason = "safe shutdown unconfirmed; process left running for inspection"
+                    self.control_log("shutdown timeout/failure")
                     self.store.audit("timeout", self.store.load(self.session_id), {"kind": "shutdown"})
                     self.update(failure=reason, stop_reason=self.stop_reason)
                     self.transition(SessionState.FAILED, "failure", {
@@ -101,6 +127,7 @@ class Supervisor:
                     # Retain the PTY/socket and supervisor so an operator can inspect,
                     # attach, clean up the guest, and retry a bounded stop.
                     self.failed = True; self.stop_requested = False; shutdown_deadline = None
+                    shutdown_phase = None
                 for key, _ in selector.select(0.1):
                     if key.data == "listener":
                         conn, _ = listener.accept(); conn.setblocking(False)
@@ -128,6 +155,14 @@ class Supervisor:
                             else: raise
                         if data:
                             transcript.write(data); tail = (tail + data)[-16384:]
+                            if shutdown_phase == "monitor":
+                                shutdown_tail = (shutdown_tail + data)[-4096:]
+                                if bytes.fromhex(shutdown["monitor_prompt_hex"]) in shutdown_tail:
+                                    self.control_log("monitor prompt observed")
+                                    os.write(master, bytes.fromhex(shutdown["monitor_quit_hex"]))
+                                    self.control_log("quit sent")
+                                    shutdown_phase = "exit"
+                                    shutdown_deadline = now + self.config.shutdown_timeout
                             self.last_activity = now; self.update(last_activity_at=utc_now())
                             if self.attached is not None:
                                 try: self.attached.sendall(data)
@@ -199,8 +234,18 @@ class Supervisor:
                     self.failed = True
                 code = process.poll()
                 if code is not None:
+                    if shutdown_phase == "exit":
+                        self.control_log("emulator exit observed")
                     record = self.update(exit_code=code, stop_reason=self.stop_reason)
                     if record.state == SessionState.STOPPING.value:
+                        if shutdown_phase != "exit":
+                            self.control_log("monitor prompt not observed")
+                            self.control_log("shutdown timeout/failure")
+                            reason = "emulator exited before confirmed shutdown; workspace preserved"
+                            self.update(failure=reason)
+                            self.transition(SessionState.FAILED, "failure",
+                                            {"reason": reason, "exit_code": code})
+                            return 2
                         self.transition(SessionState.RESETTING, "reset", {"exit_code": code})
                         return 0
                     if record.state == SessionState.FAILED.value:

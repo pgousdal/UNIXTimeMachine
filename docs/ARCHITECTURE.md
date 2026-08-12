@@ -8,7 +8,10 @@ then invokes the SIMH backend. It creates no listener.
 
 M2's broker owns allocation, readiness, terminal handoff, timeouts, teardown,
 reset and audit events. `Backend` is the emulator-neutral contract;
-`SimhBackend` adapts the qualified M1 preparation/runtime primitives. Later
+`SimhBackend` adapts the qualified M1 preparation/runtime primitives and owns
+the SIMH-specific shutdown protocol (monitor escape, prompt, and quit command).
+The supervisor executes that protocol as a bounded confirmation-gated state
+machine. Later
 FS-UAE, QEMU, MAME and specialist adapters implement that contract rather than
 adding emulator rules to the broker.
 

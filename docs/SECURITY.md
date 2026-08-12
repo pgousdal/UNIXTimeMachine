@@ -32,6 +32,9 @@ Session and PID input is validated, process identity includes `/proc` start
 ticks, state mutation is locked and atomic, and audit entries contain lifecycle
 metadata rather than terminal content. Backend launch descriptions must never
 contain secrets. A failed or ambiguous shutdown is preserved for inspection;
-the broker never escalates to SIGKILL. Operators must sync/halt the historical
-guest before requesting a normal stop. Deadline-triggered stop first sends the
-backend's safe emulator shutdown sequence and records the outcome.
+the broker never escalates to SIGKILL. Operators must sync the historical guest
+and explicitly attest that fact before requesting a normal stop. The
+attestation is not represented as a complete guest OS shutdown. Automatic
+deadline failures send no control input. An explicit SIMH stop enters the
+monitor, confirms its prompt from bounded live PTY output, and only then sends
+the monitor quit command; ambiguous outcomes preserve evidence.

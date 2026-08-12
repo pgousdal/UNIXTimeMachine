@@ -243,7 +243,9 @@ def cmd_broker_attach(args):
 
 
 def cmd_broker_stop(args):
-    record = broker_for(args).stop(args.session_id); print_broker_record(record)
+    record = broker_for(args).stop(args.session_id, guest_synced=args.guest_synced,
+                                   recovery=getattr(args, "recovery", False))
+    print_broker_record(record)
     if record.state == "failed": print("Evidence preserved; inspect status, transcript, and audit log before release.")
     return int(record.state == "failed")
 
@@ -288,6 +290,14 @@ def parser():
     for name, func in (("status", cmd_broker_status), ("attach", cmd_broker_attach),
                        ("stop", cmd_broker_stop), ("release", cmd_broker_release)):
         command = broker.add_parser(name); command.add_argument("session_id"); command.set_defaults(func=func)
+        if name == "stop":
+            command.add_argument("--guest-synced", action="store_true",
+                                 help="attest guest filesystems were synced; this is not an OS-shutdown claim")
+    recovery = broker.add_parser("recover-stop", help="explicitly retry backend shutdown for a FAILED session")
+    recovery.add_argument("session_id")
+    recovery.add_argument("--guest-synced", action="store_true", required=True,
+                          help="attest guest filesystems were synced; this is not an OS-shutdown claim")
+    recovery.set_defaults(func=cmd_broker_stop, recovery=True)
     broker.add_parser("list").set_defaults(func=cmd_broker_list)
     broker.add_parser("reconcile").set_defaults(func=cmd_broker_reconcile)
     broker.add_parser("config").set_defaults(func=cmd_broker_config)

@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from broker.backend import Backend, PreparedSession
+from broker.backend import Backend, PreparedSession, ShutdownProtocol
 from broker.config import BrokerConfig
 from broker.manager import Broker
 from broker.models import SessionState
@@ -25,8 +25,11 @@ CLEAN_EMULATOR = (
     "import os,tty\n"
     "tty.setraw(0); os.write(1,b'login:')\n"
     "data=b''\n"
-    "while b'quit' not in data:\n"
-    " data += os.read(0,1024)\n"
+    "while b'\\x05' not in data: data += os.read(0,1024)\n"
+    "os.write(1,b'QUIT_REACHED_GUEST' if b'quit' in data else b'CONTROL_E_RECEIVED\\r\\nsim>')\n"
+    "data=b''\n"
+    "while b'quit\\r' not in data: data += os.read(0,1024)\n"
+    "os.write(1,b'QUIT_RECEIVED')\n"
 )
 SILENT_EMULATOR = "import time; time.sleep(30)"
 INTERACTIVE_EMULATOR = (
@@ -34,7 +37,10 @@ INTERACTIVE_EMULATOR = (
     "tty.setraw(0); data=b''\n"
     "while b'boot' not in data: data += os.read(0,1024)\n"
     "os.write(1,b'mem = 2020544\\r\\nlogin:')\n"
-    "while b'quit' not in data: data += os.read(0,1024)\n"
+    "while b'\\x05' not in data: data += os.read(0,1024)\n"
+    "os.write(1,b'\\r\\nsim>')\n"
+    "data=b''\n"
+    "while b'quit\\r' not in data: data += os.read(0,1024)\n"
 )
 EXIT_ON_INPUT_EMULATOR = (
     "import os,select,time,tty\n"
@@ -45,6 +51,11 @@ EXIT_ON_INPUT_EMULATOR = (
 STUBBORN_EMULATOR = (
     "import os,signal,time,tty; tty.setraw(0); signal.signal(signal.SIGHUP,signal.SIG_IGN); "
     "os.write(1,b'login:'); time.sleep(30)"
+)
+NO_MONITOR_EMULATOR = (
+    "import os,signal,time,tty; tty.setraw(0); signal.signal(signal.SIGHUP,signal.SIG_IGN); "
+    "os.write(1,b'login:'); data=os.read(0,1024); "
+    "os.write(1,b'QUIT_REACHED_GUEST' if b'quit' in data else b'CONTROL_E_ONLY'); time.sleep(30)"
 )
 
 
@@ -63,6 +74,9 @@ class FakeBackend(Backend):
             hashes[disk_id] = sha256(golden / name)
         return PreparedSession(workspace, [sys.executable, "-c", self.code], self.patterns,
                                ["full-copy", "full-copy"], hashes)
+
+    def shutdown_protocol(self):
+        return ShutdownProtocol(True, b"\x05", b"sim>", b"quit\r")
 
 
 class BrokerTests(unittest.TestCase):
@@ -121,7 +135,7 @@ class BrokerTests(unittest.TestCase):
         first = self.request(session_id="fixed-session")
         with self.assertRaisesRegex(UTMError, "concurrent limit"):
             self.request(session_id="second-session")
-        Broker(self.root).stop(first.session_id); Broker(self.root).release(first.session_id)
+        Broker(self.root).stop(first.session_id, guest_synced=True); Broker(self.root).release(first.session_id)
         with self.assertRaisesRegex(UTMError, "duplicate"):
             self.request(session_id="fixed-session")
 
@@ -129,10 +143,10 @@ class BrokerTests(unittest.TestCase):
         total = self.request(session_id="total-limit")
         with self.assertRaisesRegex(UTMError, "maximum total"):
             self.request(session_id="total-refused")
-        Broker(self.root).stop(total.session_id)
+        Broker(self.root).stop(total.session_id, guest_synced=True)
 
     def test_deterministic_ids_are_monotonic_and_never_reused(self):
-        first = self.request(); Broker(self.root).stop(first.session_id); Broker(self.root).release(first.session_id)
+        first = self.request(); Broker(self.root).stop(first.session_id, guest_synced=True); Broker(self.root).release(first.session_id)
         second = self.request()
         self.assertEqual(first.session_id, "unix-v7-pdp11-000001")
         self.assertEqual(second.session_id, "unix-v7-pdp11-000002")
@@ -146,7 +160,7 @@ class BrokerTests(unittest.TestCase):
         output = os.read(output_read, 4096); os.close(output_read)
         self.assertIn(b"Ctrl-E is passed", output)
         self.wait_state(record.session_id, {"ready"})
-        stopped = Broker(self.root).stop(record.session_id)
+        stopped = Broker(self.root).stop(record.session_id, guest_synced=True)
         self.assertIn(stopped.state, {"resetting", "released"})
         if stopped.state == "resetting":
             stopped = self.wait_state(record.session_id, {"released"})
@@ -159,6 +173,54 @@ class BrokerTests(unittest.TestCase):
         events = {json.loads(line)["event"] for line in
                   (self.root / "logs/broker-audit.jsonl").read_text().splitlines()}
         self.assertTrue({"attach", "detach", "stop", "reset", "release"}.issubset(events))
+
+    def test_stop_requires_guest_sync_attestation_without_touching_emulator(self):
+        record = self.request(FakeBackend(EXIT_ON_INPUT_EMULATOR))
+        with self.assertRaisesRegex(UTMError, "without --guest-synced"):
+            Broker(self.root).stop(record.session_id)
+        time.sleep(.1)
+        self.assertIsNotNone(process_start_ticks(record.emulator_pid))
+        self.assertIsNone(Broker(self.root).get(record.session_id).exit_code)
+
+    def test_simh_monitor_handshake_orders_control_e_prompt_quit_and_exit(self):
+        record = self.request(); self.wait_state(record.session_id, {"ready"})
+        Broker(self.root).stop(record.session_id, guest_synced=True)
+        self.wait_state(record.session_id, {"released"})
+        transcript = Path(record.transcript).read_bytes()
+        self.assertNotIn(b"QUIT_REACHED_GUEST", transcript)
+        self.assertLess(transcript.index(b"CONTROL_E_RECEIVED"), transcript.index(b"sim>"))
+        self.assertLess(transcript.index(b"sim>"), transcript.index(b"QUIT_RECEIVED"))
+        diagnostics = (Path(record.transcript).parent / "supervisor.log").read_text()
+        expected = ["stop request accepted", "guest-sync attestation present", "Ctrl-E sent",
+                    "monitor prompt observed", "quit sent", "emulator exit observed"]
+        positions = [diagnostics.index(event) for event in expected]
+        self.assertEqual(positions, sorted(positions))
+
+    def test_missing_monitor_prompt_never_sends_quit_and_preserves_evidence(self):
+        self.write_config(shutdown_timeout=.1)
+        record = self.request(FakeBackend(NO_MONITOR_EMULATOR)); self.wait_state(record.session_id, {"ready"})
+        failed = Broker(self.root).stop(record.session_id, guest_synced=True)
+        self.assertEqual(failed.state, "failed")
+        self.assertTrue(Path(record.workspace).is_dir())
+        self.assertIsNotNone(process_start_ticks(record.emulator_pid))
+        transcript = Path(record.transcript).read_bytes()
+        self.assertIn(b"CONTROL_E_ONLY", transcript)
+        self.assertNotIn(b"QUIT_REACHED_GUEST", transcript)
+        diagnostics = (Path(record.transcript).parent / "supervisor.log").read_text()
+        self.assertIn("monitor prompt not observed", diagnostics)
+        self.assertIn("shutdown timeout/failure", diagnostics)
+        with self.assertRaisesRegex(UTMError, "ordinary stop is refused"):
+            Broker(self.root).stop(record.session_id, guest_synced=True)
+
+    def test_exit_before_monitor_confirmation_does_not_discard_workspace(self):
+        record = self.request(FakeBackend(EXIT_ON_INPUT_EMULATOR))
+        failed = Broker(self.root).stop(record.session_id, guest_synced=True)
+        self.assertEqual(failed.state, "failed")
+        self.assertEqual(failed.exit_code, 9)
+        self.assertTrue(Path(record.workspace).is_dir())
+        diagnostics = (Path(record.transcript).parent / "supervisor.log").read_text()
+        self.assertNotIn("quit sent", diagnostics)
+        self.assertIn("shutdown timeout/failure", diagnostics)
 
     def test_readiness_timeout_is_bounded_and_audited(self):
         self.write_config(readiness_timeout=2, idle_timeout=.15, shutdown_timeout=.3)
@@ -241,7 +303,7 @@ class BrokerTests(unittest.TestCase):
     def test_failed_teardown_preserves_evidence(self):
         self.write_config(shutdown_timeout=.1)
         record = self.request(FakeBackend(STUBBORN_EMULATOR)); self.wait_state(record.session_id, {"ready"})
-        failed = Broker(self.root).stop(record.session_id)
+        failed = Broker(self.root).stop(record.session_id, guest_synced=True)
         self.assertEqual(failed.state, "failed")
         self.assertTrue(Path(record.workspace).is_dir())
         with self.assertRaisesRegex(UTMError, "still be running"):

@@ -41,6 +41,17 @@ interactive readiness interval, abandoned STARTING is bounded by idle/absolute
 expiry, and automatic expiry preserves without shutdown input. The preserved
 session is qualification evidence, not disposable state for automatic deletion.
 
+The second attempt (`m2-qualification-2`, preserved emulator PID 9123) proved
+the complete operator-assisted boot/readiness and repeated attach lifecycle,
+including V7 root login, 2 MiB memory, `/usr` on `rp3`, and four guest `sync`
+commands. Its stop exposed a second defect: the supervisor wrote Ctrl-E and
+`quit` together, so V7 consumed `quit` before SIMH monitor entry was confirmed.
+The corrected M2 requires explicit `--guest-synced` attestation, performs a
+bounded Ctrl-E / observed `sim>` / `quit` / observed-exit handshake, records
+control-plane diagnostics, and refuses ordinary stop from FAILED. Both failed
+real-host sessions remain preserved evidence. M2 is still **IMPLEMENTED /
+AWAITING REAL-HOST QUALIFICATION**.
+
 ## M3 — 4.3BSD / VAX
 Repeatable 4.3BSD/VAX media contract, install, immutable golden, backend profile,
 boot/readiness, reset, preservation checks and real-host qualification. Do not

@@ -51,7 +51,7 @@ python3 scripts/utm.py broker request unix-v7-pdp11
 python3 scripts/utm.py broker list
 python3 scripts/utm.py broker attach SESSION_ID   # first attach starts readiness; Ctrl-] detaches
 python3 scripts/utm.py broker status SESSION_ID
-python3 scripts/utm.py broker stop SESSION_ID     # sync the guest first
+python3 scripts/utm.py broker stop SESSION_ID --guest-synced
 python3 scripts/utm.py broker release SESSION_ID  # idempotent after automatic release
 python3 scripts/utm.py broker reconcile
 ```
@@ -64,6 +64,10 @@ by `broker config`. M2 must not be marked complete until the real-host gate in
 UNIX V7 is operator-booted: after attach, enter `boot`, then `hp(0,0)unix`, then
 Ctrl-D. The readiness deadline begins with that first successful attach, not
 with emulator launch. Idle and absolute deadlines still bound an abandoned
-request. Sync the guest before an explicit broker stop; automatic deadline
+request. Run guest `sync` commands before an explicit broker stop, then supply
+`--guest-synced`. The flag attests only that filesystems were synced; it does
+not claim that V7 performed a complete OS shutdown. The SIMH adapter sends
+Ctrl-E, waits boundedly for a live `sim>` prompt, sends `quit` only after that
+confirmation, and then waits boundedly for emulator exit. Automatic deadline
 failures never inject a shutdown sequence and preserve the workspace and
 emulator for inspection.

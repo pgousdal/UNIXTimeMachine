@@ -52,6 +52,16 @@ control-plane diagnostics, and refuses ordinary stop from FAILED. Both failed
 real-host sessions remain preserved evidence. M2 is still **IMPLEMENTED /
 AWAITING REAL-HOST QUALIFICATION**.
 
+The third real-host attempt (`m2-qualification-3`) passed V7 boot/readiness,
+attach/detach, memory (`2020544`), `/usr` on `rp3`, four guest syncs, and
+golden-hash preservation, but shutdown timed out after Ctrl-E because the
+child PTY slave was left in canonical mode. A standalone escape byte could be
+held by the line discipline, so no fresh `sim>` was observed. The supervisor
+now configures the slave raw/noncanonical before exec; the confirmed
+Ctrl-E / fresh `sim>` / `quit` / exit handshake remains mandatory. Preserve
+this failed session and workspace as qualification evidence; do not discard or
+reuse them during qualification-4.
+
 ## M3 — 4.3BSD / VAX
 Repeatable 4.3BSD/VAX media contract, install, immutable golden, backend profile,
 boot/readiness, reset, preservation checks and real-host qualification. Do not

@@ -10,6 +10,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tty
 import time
 from pathlib import Path
 
@@ -73,6 +74,10 @@ class Supervisor:
         listener.bind(str(socket_path)); os.chmod(socket_path, 0o660); listener.listen(1)
         listener.setblocking(False)
         master, slave = pty.openpty()
+        # Deliver standalone emulator control bytes immediately.  Canonical
+        # input would hold Ctrl-E until a line delimiter; raw mode preserves
+        # CR/LF bytes and makes the PTY transport byte-for-byte for SIMH.
+        tty.setraw(slave)
         transcript_path = Path(record.transcript)
         transcript_path.parent.mkdir(parents=True, exist_ok=True)
         self.control_log_path = transcript_path.parent / "supervisor.log"

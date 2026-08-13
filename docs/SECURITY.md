@@ -38,3 +38,8 @@ attestation is not represented as a complete guest OS shutdown. Automatic
 deadline failures send no control input. An explicit SIMH stop enters the
 monitor, confirms its prompt from bounded live PTY output, and only then sends
 the monitor quit command; ambiguous outcomes preserve evidence.
+
+Real-host qualification confirmed both safety branches: the attested normal
+stop observed a fresh monitor prompt before sending `quit`, while idle timeout
+and interrupted-supervisor reconciliation sent no shutdown input, performed no
+forced kill, and preserved the emulator, workspace, and audit evidence.

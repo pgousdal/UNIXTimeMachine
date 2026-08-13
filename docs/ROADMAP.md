@@ -17,62 +17,70 @@ SIMH live-console logging defect found during qualification was resolved by
 capturing the PTY stream outside the emulator.
 
 ## M2 — Session broker
-**IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION.** Local Unix-domain PTY
-handoff, validated lifecycle, deterministic admission, bounded startup,
-readiness/idle/absolute/shutdown deadlines, structured audit, preservation-safe
-teardown, backend abstraction and conservative crash reconciliation are
-implemented and covered by synthetic tests. No TCP handoff was added.
+**COMPLETE.** Local Unix-domain PTY handoff, validated lifecycle, deterministic
+admission, bounded deadlines, structured audit, preservation-safe teardown,
+backend abstraction, and conservative crash reconciliation are implemented,
+tested, and qualified on a Debian 13 real host with UNIX V7 under Open SIMH. No
+TCP handoff was added.
 
-M2 becomes **COMPLETE** only after a Debian 13 qualification demonstrates with
-the real UNIX V7 backend: allocation, complete preparation, emulator start,
-readiness, attach, ACTIVE, clean detach, guest-synced stop, reset/discard,
-release, unchanged golden hashes, timeout handling, and reconciliation after an
-intentionally interrupted supervisor. Record commands, session IDs, audit
-events and before/after golden hashes; unit tests alone do not close this gate.
+The successful session, `m2-qualification-5`, recorded request, allocation,
+preparation, emulator start, local attach while STARTING, `readiness_begin` on
+first attach, V7 boot, `mem = 2020544`, `login:`, and STARTING -> READY ->
+ACTIVE. Root login showed `rp3 on /usr`; `df` reported 1192 blocks on
+`/dev/rp0` and 297416 on `/dev/rp3`. Four guest `sync` commands preceded
+ACTIVE -> READY detach. The emulator PID equaled SID, PGID, and TPGID; fd 0 and
+the controlling tty named the same `/dev/pts/N`; termios had `intr = ^E`,
+`isig`, `-icanon`, and `-echo`.
 
-The first real-host attempt (`unix-v7-pdp11-000001`, Open SIMH PID 9058)
-manually reached `mem = 2020544` and `login:`, but exposed a lifecycle defect:
-readiness had been timed from emulator launch and expired before operator boot.
-The timeout then attempted an unconfirmed shutdown; the emulator was correctly
-left running, while its vanished socket also exposed an uncontrolled attach
-traceback. M2 remains **IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION** after
-the correction: startup covers transport creation, first attach begins the
-interactive readiness interval, abandoned STARTING is bounded by idle/absolute
-expiry, and automatic expiry preserves without shutdown input. The preserved
-session is qualification evidence, not disposable state for automatic deletion.
+The `--guest-synced` stop recorded Ctrl-E, a fresh monitor prompt, `quit` only
+after confirmation, emulator exit, and STOPPING -> RESETTING -> RELEASED.
+Supervisor diagnostics recorded, in order: `stop request accepted`,
+`guest-sync attestation present`, `Ctrl-E sent`, `monitor prompt observed`,
+`quit sent`, and `emulator exit observed`.
 
-The second attempt (`m2-qualification-2`, preserved emulator PID 9123) proved
-the complete operator-assisted boot/readiness and repeated attach lifecycle,
-including V7 root login, 2 MiB memory, `/usr` on `rp3`, and four guest `sync`
-commands. Its stop exposed a second defect: the supervisor wrote Ctrl-E and
-`quit` together, so V7 consumed `quit` before SIMH monitor entry was confirmed.
-The corrected M2 requires explicit `--guest-synced` attestation, performs a
-bounded Ctrl-E / observed `sim>` / `quit` / observed-exit handshake, records
-control-plane diagnostics, and refuses ordinary stop from FAILED. Both failed
-real-host sessions remain preserved evidence. M2 is still **IMPLEMENTED /
-AWAITING REAL-HOST QUALIFICATION**.
+Real-host admission control refused another UNIX V7 session at the configured
+per-system limit. Temporary concurrency overrides used to retain failed
+evidence were removed; production defaults remain 4 total and 2 per system.
+Session `m2-qualification-timeout`, run with a qualification-only short idle
+deadline, recorded STARTING -> `timeout(kind=idle)` -> FAILED with `idle timeout;
+emulator and workspace preserved for inspection`. It received no Ctrl-E,
+`quit`, or other shutdown input and no forced kill.
 
-The third real-host attempt (`m2-qualification-3`) passed V7 boot/readiness,
-attach/detach, memory (`2020544`), `/usr` on `rp3`, four guest syncs, and
-golden-hash preservation, but shutdown timed out after Ctrl-E. The initial
-canonical-buffering diagnosis and parent-side raw-mode correction were
-insufficient.
+Crash recovery was qualified by `m2-qualification-reconcile-2`, not by the
+earlier session already FAILED through idle timeout. Before interruption it was
+STARTING with supervisor PID 10329 and emulator PID 10330. After intentionally
+SIGKILLing the supervisor while the emulator remained alive, reconcile reported
+`failed-preserved m2-qualification-reconcile-2` and recorded FAILED
+(`supervisor missing; emulator still running`) plus `result=preserved` with the
+same reason. The emulator and workspace were preserved. A manual shell-variable
+typo briefly referenced PID 10220; that PID is not exhibit evidence.
 
-The fourth attempt (`m2-qualification-4`) again passed normal input, V7 boot,
-`mem = 2020544`, root login, `/usr` on `rp3`, `df`, four guest syncs, detach to
-READY, and golden-hash preservation. Shutdown again timed out after Ctrl-E,
-with no new SIMH output and the emulator left alive. Process evidence showed
-`TT=?`. Pinned Open SIMH source and a production-topology PTY regression prove
-the cause: `start_new_session=True` made SIMH a session leader, but passing an
-already-open slave did not acquire it as the controlling terminal. Moreover,
-SIMH expects POSIX `ISIG` with `VINTR=0x05` to signal the terminal foreground
-process group; parent-side `tty.setraw` disabled `ISIG`, causing SIMH to retain
-the wrong runtime mode. The supervisor now acquires fd 0 as the child session's
-controlling terminal and explicitly makes the child process group foreground,
-while leaving startup termios for SIMH to manage. Preserve all four failed
-sessions and workspaces as evidence. A fresh `m2-qualification-5` must prove the
-unchanged Ctrl-E / fresh `sim>` / `quit` / exit safety handshake before M2 can
-be complete.
+The final golden SHA-256 values were unchanged:
+
+```text
+root/rp0  f9f12dc7afd7bbc05c848a5d26d24a58b975c44b42e846843c01c2d1f9b4446d
+usr/rp1   2e401e4c1035980ca48c93cc6834bb4b8ddd1e1f596555afa882416560ca686d
+```
+
+Historical qualification defects were resolved during M2. Buffered Open SIMH
+`SET CONSOLE LOG` was replaced by process-boundary live PTY capture. Readiness
+was moved from emulator launch to first attach while bounded idle/absolute
+deadlines still cover abandonment. Blind Ctrl-E plus `quit` was replaced by
+guest-sync attestation and a bounded monitor-confirmation handshake. PTY mode
+changes alone proved insufficient: Open SIMH uses Ctrl-E as `VINTR` with
+`ISIG`, signaling the controlling terminal's foreground process group. The
+broker now establishes the controlling PTY/session/foreground-process-group
+topology and preserves `ISIG`. These are resolved findings, not limitations.
+
+All failed qualification sessions and workspaces remain historical evidence;
+the broker does not automatically delete uncertain sessions.
+
+Earlier attempts document how those defects were found: `unix-v7-pdp11-000001`
+(PID 9058) exposed readiness timing and attach diagnostics;
+`m2-qualification-2` (PID 9123) exposed the unsafe blind shutdown sequence; and
+`m2-qualification-3` and `m2-qualification-4` disproved canonical/raw handling
+as the full Ctrl-E solution. Their preserved state must not be presented as a
+current limitation or automatically released.
 
 ## M3 — 4.3BSD / VAX
 Repeatable 4.3BSD/VAX media contract, install, immutable golden, backend profile,

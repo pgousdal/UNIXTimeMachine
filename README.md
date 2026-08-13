@@ -38,8 +38,10 @@ media; provisioning never downloads it. The exact manual installation, two-boot
 qualification record, and teardown procedure is in
 `systems/unix-v7-pdp11/README.md`.
 
-M2 implements the local session-broker foundation and is **IMPLEMENTED / AWAITING
-REAL-HOST QUALIFICATION**. It allocates deterministic disposable sessions,
+M2 implements the local session-broker foundation and is **COMPLETE**. Debian 13
+real-host qualification covered the normal lifecycle, admission control,
+preservation-safe timeout handling, confirmed SIMH shutdown, and conservative
+crash reconciliation. It allocates deterministic disposable sessions,
 supervises a backend through a PTY, offers an operator-only Unix-domain console,
 enforces admission and bounded deadlines, records JSON Lines audit events, and
 conservatively reconciles interrupted state. It adds no network listener or BBS
@@ -56,10 +58,12 @@ python3 scripts/utm.py broker release SESSION_ID  # idempotent after automatic r
 python3 scripts/utm.py broker reconcile
 ```
 
-Defaults are explicit in `broker/config.py`; an operator may override them with
+Production defaults are explicit in `broker/config.py`: 4 total sessions, 2 per
+system, and startup/readiness/idle/absolute/shutdown deadlines of
+10/120/1800/7200/10 seconds. An operator may override them with
 `/srv/unix-time-machine/state/broker-config.json` using the exact keys printed
-by `broker config`. M2 must not be marked complete until the real-host gate in
-`docs/ROADMAP.md` has been observed.
+by `broker config`. Short deadlines and altered concurrency used during
+qualification were temporary and are not recommended production settings.
 
 UNIX V7 is operator-booted: after attach, enter `boot`, then `hp(0,0)unix`, then
 Ctrl-D. The readiness deadline begins with that first successful attach, not

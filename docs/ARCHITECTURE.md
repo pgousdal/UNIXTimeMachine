@@ -67,6 +67,17 @@ as the original process. `broker reconcile` marks records with missing/mismatche
 supervisors FAILED, reports whether an emulator still matches, and preserves
 orphan preparation directories. It never deletes uncertain state.
 
+Real-host M2 qualification confirmed this model. `m2-qualification-5` traversed
+STARTING -> READY -> ACTIVE, detached to READY, and completed the attested,
+prompt-gated shutdown through STOPPING -> RESETTING -> RELEASED with the golden
+set unchanged. `m2-qualification-timeout` confirmed idle expiry preserves the
+emulator and workspace without console injection or force kill.
+`m2-qualification-reconcile-2` confirmed that a missing supervisor with a live
+emulator becomes FAILED and `failed-preserved`; uncertain state remains for
+operator inspection. Admission at the per-system limit was also refused on the
+real host. Qualification-only short deadlines and concurrency overrides are not
+architecture defaults.
+
 Canonical host layout:
 
 ```text

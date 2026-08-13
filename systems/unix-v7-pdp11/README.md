@@ -2,8 +2,8 @@
 
 Status: **COMPLETE**.
 
-M1 is complete; the M2 broker adapter is implemented but awaits the real-host
-qualification gate in `docs/ROADMAP.md`. The original M1 workflow below remains
+M1 and the M2 broker adapter are complete, including the real-host qualification
+gate in `docs/ROADMAP.md`. The original M1 workflow below remains
 valid. For M2, request a session, attach, enter `boot`, `hp(0,0)unix`, and Ctrl-D
 as before, then detach with Ctrl-]. After guest `sync` commands, `broker stop
 --guest-synced` sends Ctrl-E, waits boundedly for the live SIMH `sim>` prompt,
@@ -19,8 +19,7 @@ traceback. That session and workspace are deliberately preserved as evidence.
 The corrected broker starts readiness on first successful attach, audits
 attach/detach during STARTING, lets an observed boundary marker win, reports
 failed/missing-console attaches cleanly, and sends no automatic shutdown input
-when guest sync is unconfirmed. A fresh real-host run is still required; M2
-remains **IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION**.
+when guest sync is unconfirmed. This failed session remains historical evidence.
 
 The second attempt, `m2-qualification-2` (preserved emulator PID 9123), proved
 boot, readiness, login, `/usr`, detach/reattach, and four `sync` commands. It is
@@ -41,7 +40,7 @@ terminal's foreground group. The broker now establishes those relationships
 after `Popen` performs `setsid()` and before exec, and no longer preemptively
 sets the slave raw (which cleared `ISIG` before SIMH took its snapshot).
 
-Use this exact sequence for a fresh M2 rerun:
+The successful M2 qualification used this sequence:
 
 ```sh
 cd /path/to/UNIXTimeMachine
@@ -66,9 +65,9 @@ readlink /proc/PID/fd/0
 stty -a -F /proc/PID/fd/0
 ```
 
-The tty and fd 0 must name the same `/dev/pts/N`; SID, PGID, and TPGID must all
-equal the emulator PID. The run-mode flags must include `isig`, `-icanon`, and
-`-echo`, with `intr = ^E`. Then run:
+The observed tty and fd 0 named the same `/dev/pts/N`; SID, PGID, and TPGID all
+equaled the emulator PID. The run-mode flags included `isig`, `-icanon`, and
+`-echo`, with `intr = ^E`. The qualification then ran:
 
 ```sh
 python3 scripts/utm.py broker status m2-qualification-5
@@ -79,6 +78,30 @@ sha256sum "$UTM_ROOT/golden/unix-v7-pdp11/rp0.dsk" \
           "$UTM_ROOT/golden/unix-v7-pdp11/rp1.dsk"
 grep 'm2-qualification-5' "$UTM_ROOT/logs/broker-audit.jsonl"
 cat "$UTM_ROOT/logs/sessions/m2-qualification-5/supervisor.log"
+```
+
+`m2-qualification-5` reached `mem = 2020544` and `login:`, accepted root login,
+reported `rp3 on /usr`, and showed 1192 free blocks on `/dev/rp0` and 297416 on
+`/dev/rp3`. Four guest syncs preceded ACTIVE -> READY detach. The attested stop
+observed Ctrl-E, a fresh `sim>` prompt, `quit`, emulator exit, and STOPPING ->
+RESETTING -> RELEASED in order. Admission control refused an additional V7
+session at the configured per-system limit.
+
+`m2-qualification-timeout` used a qualification-only short idle deadline and
+recorded STARTING -> idle timeout -> FAILED while preserving its emulator and
+workspace without shutdown input or force kill. The valid crash-reconciliation
+exhibit is `m2-qualification-reconcile-2`: supervisor PID 10329 was SIGKILLed
+while emulator PID 10330 remained alive, and reconcile recorded
+`failed-preserved` / FAILED with `supervisor missing; emulator still running`.
+PID 10220 was only an operator-shell variable typo and is not exhibit evidence.
+Failed qualification sessions and workspaces remain historical evidence;
+uncertain sessions are not automatically deleted.
+
+The final M2 golden hashes were unchanged:
+
+```text
+root/rp0  f9f12dc7afd7bbc05c848a5d26d24a58b975c44b42e846843c01c2d1f9b4446d
+usr/rp1   2e401e4c1035980ca48c93cc6834bb4b8ddd1e1f596555afa882416560ca686d
 ```
 
 ## Canonical definition
@@ -410,4 +433,4 @@ python3 scripts/utm.py system ready unix-v7-pdp11 --session-id qualification-2 -
   leaves both golden hashes unchanged.
 
 These observations were completed on the qualification VM and satisfy the M1
-real-host gate. M2 remains out of scope for this milestone.
+real-host gate. The separate broker evidence above satisfies the M2 gate.

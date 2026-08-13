@@ -3,6 +3,25 @@
 State: **IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION**. Nothing below is a
 claim of successful operation on the Debian 13 qualification host.
 
+## Preserved `m3-qualification-1` evidence
+
+The disposable golden boot, readiness, ACTIVE/root login, filesystem checks,
+and repeated detach/reattach all passed. After four `sync` commands,
+`shutdown -h now` printed `syncing disks... done`, `HALT`, `Infinite loop ...`,
+and a live `sim>` prompt. This established that 4.3BSD halt returns directly to
+the SIMH monitor. The operator then manually entered `quit` before invoking the
+broker stop path. The emulator exited 0 while the broker was still ACTIVE, so
+the broker correctly recorded `ACTIVE -> FAILED` with `emulator exited
+unexpectedly (0)`.
+
+Retain this as failed qualification evidence: the manual quit was outside
+broker control and cannot prove the broker-controlled shutdown/reset/release
+path. It does not make M3 complete. The profile now permits a fresh live
+post-readiness `sim>` marker to record monitor-already-active state. An attested
+broker stop consumes that state, skips Ctrl-E, sends `quit`, and waits for exit.
+Transcript history is never consulted as proof, and an unsolicited exit remains
+a failure.
+
 ## First M3 real-host qualification finding
 
 The first Debian 13 run with pinned Open SIMH v3.12-3 reached the 4.3BSD kernel,
@@ -260,8 +279,12 @@ original manual says `-h` executes `halt`, while omitting `-n` retains normal
 sync. Wait for console evidence that shutdown/halt has completed. Only then may
 the operator attest with `broker stop SESSION --guest-synced`; that flag means
 the documented 4.3BSD shutdown was observed, not merely that `sync` was typed.
-The broker then uses Ctrl-E, requires a fresh `sim>` prompt, sends `quit`, and
-requires emulator exit. Uncertainty preserves workspace, transcript, and audit.
+For this profile the broker recognizes the fresh `sim>` emitted on the live PTY
+by 4.3BSD halt. After the operator detaches and submits the attested stop, it
+skips Ctrl-E, sends `quit` only from that confirmed monitor state, and requires
+emulator exit. If no fresh monitor evidence exists it retains the generic
+Ctrl-E -> fresh `sim>` -> `quit` fallback. Transcript history is not evidence.
+Uncertainty preserves workspace, transcript, and audit.
 
 ## Debian 13 qualification gate
 
@@ -277,12 +300,14 @@ Record operator, UTC times, host release, repository commit, and every command.
 6. Boot staging under `install-runtime.ini`; verify 8 MiB/VAX identity and RA81.
 7. Reach console `login:` and verify expected `/`, `/usr`, and `/a`/home layout
    using `mount` and `df` (record actual distribution layout).
-8. Run `/etc/shutdown -h now`, observe completion, then Ctrl-E/prompt/quit/exit.
+8. Run `/etc/shutdown -h now`, observe its live `sim>` prompt, then enter `quit`
+   for this installation-only run.
 9. Import the one-disk golden and record metadata plus independent hashes.
 10. Request broker session #1; attach, `run 2`, reach readiness, log in, verify
     filesystems, detach (Ctrl-]), reattach, and detach again.
 11. Perform `/etc/shutdown -h now`; after observed halt run broker stop with
-    `--guest-synced`. Verify monitor handshake, exit, reset, and release.
+    `--guest-synced`. Do not type `quit` manually. Verify the broker recognizes
+    monitor-already-active, sends no redundant Ctrl-E, then exits, resets, and releases.
 12. Verify golden hash unchanged.
 13. Request a completely fresh session #2 and repeat boot, readiness, login,
     filesystem checks, clean shutdown, monitor exit, reset/release, and hash check.
@@ -293,6 +318,24 @@ Record operator, UTC times, host release, repository commit, and every command.
     media report, golden metadata/hashes, and qualification notes outside Git.
 
 Only after reviewing that evidence may ROADMAP state COMPLETE.
+
+For the fresh broker rerun using the already imported golden:
+
+```sh
+python3 scripts/utm.py broker request 43bsd-vax --session-id m3-qualification-2
+python3 scripts/utm.py broker attach m3-qualification-2
+python3 scripts/utm.py broker attach m3-qualification-2
+python3 scripts/utm.py broker status m3-qualification-2
+python3 scripts/utm.py broker stop m3-qualification-2 --guest-synced
+python3 scripts/utm.py broker status m3-qualification-2
+sha256sum /srv/unix-time-machine/golden/43bsd-vax/rq0.dsk
+```
+
+Inside the attachment, boot as documented, verify readiness/login/mounts,
+exercise detach/reattach, run four `sync` commands, then `/etc/shutdown -h now`.
+Wait for the fresh `sim>` and detach with Ctrl-]; do not type `quit`. Run the
+broker stop command only afterward and archive its transcript, supervisor log,
+audit, status, and golden hash.
 
 For the next fresh qualification attempt, use this exact new staging identity
 (after confirming it does not exist):

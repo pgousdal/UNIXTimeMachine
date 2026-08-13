@@ -81,3 +81,6 @@ QUALIFICATION**. It uses the existing broker and preservation model, one RA81
 disk, external unpinned operator media, operator-assisted console boot, and
 4.3BSD `/etc/shutdown -h now` before the confirmed SIMH monitor handshake. See
 `systems/43bsd-vax/README.md` for the contract and qualification evidence gate.
+Unlike V7, 4.3BSD halt can itself reach the monitor; its profile accepts only a
+fresh live-PTY `sim>` observation, then broker stop skips Ctrl-E and owns the
+prompt-gated `quit`/exit path. Historical transcript text is never proof.

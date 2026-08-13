@@ -102,6 +102,8 @@ class Supervisor:
         shutdown_phase = None
         shutdown_tail = b""
         shutdown = spec["shutdown"]
+        monitor_already_active = False
+        live_monitor_tail = b""
         try:
             while True:
                 now = time.monotonic()
@@ -117,10 +119,17 @@ class Supervisor:
                     self.control_log("stop request accepted")
                     if request.get("guest_synced"):
                         self.control_log("guest-sync attestation present")
-                    os.write(master, bytes.fromhex(shutdown["monitor_enter_hex"]))
-                    self.control_log("Ctrl-E sent")
-                    shutdown_phase = "monitor"
-                    shutdown_tail = b""
+                    if (shutdown.get("monitor_may_already_be_active")
+                            and monitor_already_active):
+                        self.control_log("monitor already active; fresh prompt previously observed")
+                        os.write(master, bytes.fromhex(shutdown["monitor_quit_hex"]))
+                        self.control_log("quit sent")
+                        shutdown_phase = "exit"
+                    else:
+                        os.write(master, bytes.fromhex(shutdown["monitor_enter_hex"]))
+                        self.control_log("Ctrl-E sent")
+                        shutdown_phase = "monitor"
+                        shutdown_tail = b""
                     shutdown_deadline = now + self.config.shutdown_timeout
                 if shutdown_deadline is not None and now >= shutdown_deadline and process.poll() is None:
                     if shutdown_phase == "monitor":
@@ -164,6 +173,12 @@ class Supervisor:
                             else: raise
                         if data:
                             transcript.write(data); tail = (tail + data)[-16384:]
+                            if (shutdown.get("monitor_may_already_be_active") and self.ready
+                                    and shutdown_phase is None):
+                                live_monitor_tail = (live_monitor_tail + data)[-4096:]
+                                if bytes.fromhex(shutdown["monitor_prompt_hex"]) in live_monitor_tail:
+                                    monitor_already_active = True
+                                    self.control_log("fresh live monitor prompt observed")
                             if shutdown_phase == "monitor":
                                 shutdown_tail = (shutdown_tail + data)[-4096:]
                                 if bytes.fromhex(shutdown["monitor_prompt_hex"]) in shutdown_tail:
@@ -191,10 +206,20 @@ class Supervisor:
                         except OSError: data = b""
                         if not data or b"\x1d" in data:
                             before = data.split(b"\x1d", 1)[0]
-                            if before: os.write(master, before)
+                            if before:
+                                os.write(master, before)
+                                if shutdown.get("monitor_may_already_be_active"):
+                                    monitor_already_active = False
+                                    live_monitor_tail = b""
                             self.detach(selector)
                         else:
-                            os.write(master, data); self.last_activity = now
+                            os.write(master, data)
+                            if shutdown.get("monitor_may_already_be_active"):
+                                # Any subsequent guest/monitor input makes earlier monitor
+                                # evidence stale; only later live PTY output can confirm it again.
+                                monitor_already_active = False
+                                live_monitor_tail = b""
+                            self.last_activity = now
                             self.update(last_activity_at=utc_now())
                 # Consume all console events selected at the boundary before deciding that
                 # readiness lost the race. Also drain bytes that became readable after the

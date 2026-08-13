@@ -2,6 +2,7 @@ import tempfile
 import unittest
 import json
 import os
+import time
 from pathlib import Path
 from unittest import mock
 
@@ -36,6 +37,25 @@ class VaxFakeBackend(Backend):
         return ShutdownProtocol(True, b"\x05", b"sim>", b"quit\r")
 
 
+class HaltToMonitorBackend(VaxFakeBackend):
+    def prepare(self, system_id, session_id, root):
+        prepared = super().prepare(system_id, session_id, root)
+        code = ("import os,tty\n"
+                "tty.setraw(0); os.write(1,b'old transcript sim> text\\r\\nlogin:'); d=b''\n"
+                "while b'shutdown\\r' not in d: d += os.read(0,1024)\n"
+                "os.write(1,b'syncing disks... done\\r\\nHALT\\r\\nInfinite loop ...\\r\\nsim>'); d=b''\n"
+                "while b'quit\\r' not in d:\n"
+                " d += os.read(0,1024)\n"
+                " if b'\\x05' in d: os.write(1,b'REDUNDANT_CONTROL_E')\n"
+                "os.write(1,b'QUIT_RECEIVED')\n")
+        import sys
+        return PreparedSession(prepared.workspace, [sys.executable, "-c", code], ["login:"],
+                               prepared.copy_methods, prepared.golden_sha256)
+
+    def shutdown_protocol(self):
+        return ShutdownProtocol(True, b"\x05", b"sim>", b"quit\r", None, True)
+
+
 class M3Tests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -62,6 +82,7 @@ class M3Tests(unittest.TestCase):
         backend = backend_for(SYSTEM)
         self.assertIsInstance(backend, SimhBackend)
         self.assertIn("/etc/shutdown -h now", backend.shutdown_protocol().guest_procedure)
+        self.assertTrue(backend.shutdown_protocol().monitor_may_already_be_active)
 
     def test_media_missing_unpinned_and_duplicate_mismatch(self):
         self.assertTrue(all(r.status == "MISSING" for r in verify_media(SYSTEM, self.root)))
@@ -178,6 +199,63 @@ class M3Tests(unittest.TestCase):
             __import__("time").sleep(.02)
         self.assertFalse(Path(record.workspace).exists())
         self.assertEqual(sha256(golden / "rq0.dsk"), before)
+
+    def test_guest_halt_monitor_is_consumed_without_redundant_control_e(self):
+        golden = self.root / "golden" / SYSTEM; golden.mkdir(parents=True)
+        (golden / "rq0.dsk").write_bytes(b"immutable-vax")
+        before = sha256(golden / "rq0.dsk")
+        atomic_json(self.root / "state/broker-config.json",
+                    BrokerConfig(startup_timeout=1, readiness_timeout=1, idle_timeout=5,
+                                 absolute_timeout=5, shutdown_timeout=.5).as_dict())
+        with mock.patch("broker.manager.backend_for", return_value=HaltToMonitorBackend()):
+            record = Broker(self.root).request(SYSTEM, "halt-to-monitor")
+        deadline = time.monotonic() + 2
+        while Broker(self.root).get(record.session_id).state != "ready":
+            if time.monotonic() > deadline:
+                self.fail("VAX fake did not become ready")
+            time.sleep(.01)
+        input_read, input_write = os.pipe(); output_read, output_write = os.pipe()
+        os.write(input_write, b"shutdown\r\x1d"); os.close(input_write)
+        Broker(self.root).attach(record.session_id, input_read, output_write)
+        os.close(input_read); os.close(output_write); os.close(output_read)
+        time.sleep(.1)
+        Broker(self.root).stop(record.session_id, guest_synced=True)
+        while Broker(self.root).get(record.session_id).state != "released":
+            if time.monotonic() > deadline:
+                self.fail("monitor-active VAX session did not release")
+            time.sleep(.01)
+        transcript = Path(record.transcript).read_bytes()
+        self.assertIn(b"HALT", transcript)
+        self.assertIn(b"QUIT_RECEIVED", transcript)
+        self.assertNotIn(b"REDUNDANT_CONTROL_E", transcript)
+        diagnostics = (Path(record.transcript).parent / "supervisor.log").read_text()
+        fresh = diagnostics.index("fresh live monitor prompt observed")
+        accepted = diagnostics.index("stop request accepted")
+        quit_sent = diagnostics.index("quit sent")
+        self.assertLess(fresh, accepted)
+        self.assertLess(accepted, quit_sent)
+        self.assertNotIn("Ctrl-E sent", diagnostics)
+        self.assertEqual(sha256(golden / "rq0.dsk"), before)
+
+    def test_historical_monitor_text_is_not_shutdown_evidence(self):
+        golden = self.root / "golden" / SYSTEM; golden.mkdir(parents=True)
+        (golden / "rq0.dsk").write_bytes(b"immutable-vax")
+        atomic_json(self.root / "state/broker-config.json",
+                    BrokerConfig(startup_timeout=1, readiness_timeout=1, idle_timeout=5,
+                                 absolute_timeout=5, shutdown_timeout=.1).as_dict())
+        with mock.patch("broker.manager.backend_for", return_value=HaltToMonitorBackend()):
+            record = Broker(self.root).request(SYSTEM, "historical-prompt")
+        deadline = time.monotonic() + 2
+        while Broker(self.root).get(record.session_id).state != "ready":
+            if time.monotonic() > deadline:
+                self.fail("VAX fake did not become ready")
+            time.sleep(.01)
+        failed = Broker(self.root).stop(record.session_id, guest_synced=True)
+        self.assertEqual(failed.state, "failed")
+        diagnostics = (Path(record.transcript).parent / "supervisor.log").read_text()
+        self.assertIn("Ctrl-E sent", diagnostics)
+        self.assertNotIn("quit sent", diagnostics)
+        self.assertTrue(Path(record.workspace).is_dir())
 
 
 if __name__ == "__main__":

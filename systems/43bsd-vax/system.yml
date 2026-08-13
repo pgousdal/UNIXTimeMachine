@@ -58,6 +58,7 @@ readiness:
   timeout_seconds: 300
 shutdown:
   guest_procedure: "As root run /etc/shutdown -h now and attest only after console halt completion is observed"
+  monitor_may_already_be_active: true
 session:
   public_eligible: false
   reset_strategy: copy-on-session

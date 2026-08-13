@@ -78,6 +78,14 @@ operator inspection. Admission at the per-system limit was also refused on the
 real host. Qualification-only short deadlines and concurrency overrides are not
 architecture defaults.
 
+The M3 SIMH profile additionally permits a monitor-already-active shutdown
+state because 4.3BSD `halt` returns to `sim>`. The supervisor derives that state
+only from new live PTY bytes after guest readiness; it never scans the persisted
+transcript. Later operator input invalidates the evidence. An attested stop may
+consume valid evidence and send `quit` without Ctrl-E, while the default/V7
+profile remains Ctrl-E -> fresh prompt -> quit. Emulator exit is clean only in
+the resulting broker-controlled exit phase.
+
 Canonical host layout:
 
 ```text

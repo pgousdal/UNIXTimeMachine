@@ -24,6 +24,7 @@ class ShutdownProtocol:
     monitor_prompt: bytes
     monitor_quit: bytes
     guest_procedure: str | None = None
+    monitor_may_already_be_active: bool = False
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -32,6 +33,7 @@ class ShutdownProtocol:
             "monitor_prompt_hex": self.monitor_prompt.hex(),
             "monitor_quit_hex": self.monitor_quit.hex(),
             "guest_procedure": self.guest_procedure,
+            "monitor_may_already_be_active": self.monitor_may_already_be_active,
         }
 
 
@@ -47,11 +49,14 @@ class Backend(ABC):
 
 
 class SimhBackend(Backend):
-    def __init__(self, guest_procedure: str | None = None):
+    def __init__(self, guest_procedure: str | None = None,
+                 monitor_may_already_be_active: bool = False):
         self.guest_procedure = guest_procedure
+        self.monitor_may_already_be_active = monitor_may_already_be_active
 
     def shutdown_protocol(self) -> ShutdownProtocol:
-        return ShutdownProtocol(True, b"\x05", b"sim>", b"quit\r", self.guest_procedure)
+        return ShutdownProtocol(True, b"\x05", b"sim>", b"quit\r", self.guest_procedure,
+                                self.monitor_may_already_be_active)
 
     def prepare(self, system_id: str, session_id: str, root: Path) -> PreparedSession:
         _, manifest = system_manifest(system_id)
@@ -67,5 +72,7 @@ def backend_for(system_id: str) -> Backend:
     _, manifest = system_manifest(system_id)
     family = manifest.get("emulator", {}).get("family")
     if family == "simh":
-        return SimhBackend(manifest.get("shutdown", {}).get("guest_procedure"))
+        shutdown = manifest.get("shutdown", {})
+        return SimhBackend(shutdown.get("guest_procedure"),
+                           bool(shutdown.get("monitor_may_already_be_active", False)))
     raise ValueError(f"no session backend adapter for emulator family: {family!r}")

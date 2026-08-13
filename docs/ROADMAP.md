@@ -91,6 +91,10 @@ add a BBS door or public listener in M3.
 unverified-media boundary, RA81 profiles, pinned `vax780` provisioning, broker
 integration, tests, and Debian 13 procedure are present. M3 is not COMPLETE
 until the two-session evidence gate in the exhibit README is performed.
+`m3-qualification-1` is preserved failed evidence: 4.3BSD reached the live SIMH
+monitor cleanly, but the operator entered `quit` before broker stop, producing
+the correct unsolicited-exit `ACTIVE -> FAILED` result. M3 remains
+**IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION** pending a fresh run.
 
 ## M4 — AMIX / Amiga 3000
 FS-UAE A3000 profile, tape/media procedure, terminal handoff, reset.

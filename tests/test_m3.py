@@ -1,0 +1,150 @@
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+import yaml
+
+from broker.backend import Backend, PreparedSession, ShutdownProtocol, SimhBackend, backend_for
+from broker.config import BrokerConfig
+from broker.manager import Broker
+from scripts.utmlib import (UTMError, import_golden, prepare_install,
+                            atomic_json, prepare_session, render_runtime, sha256, verify_media)
+
+ROOT = Path(__file__).resolve().parents[1]
+SYSTEM = "43bsd-vax"
+
+
+class VaxFakeBackend(Backend):
+    def prepare(self, system_id, session_id, root):
+        workspace = root / "sessions" / system_id / session_id
+        workspace.mkdir(parents=True)
+        source = root / "golden" / system_id / "rq0.dsk"
+        (workspace / "rq0.dsk").write_bytes(source.read_bytes())
+        code = ("import os,tty\n"
+                "tty.setraw(0); os.write(1,b'login:'); d=b''\n"
+                "while b'\\x05' not in d: d += os.read(0,1024)\n"
+                "os.write(1,b'\\r\\nsim>'); d=b''\n"
+                "while b'quit\\r' not in d: d += os.read(0,1024)\n")
+        import sys
+        return PreparedSession(workspace, [sys.executable, "-c", code], ["login:"],
+                               ["full-copy"], {"system": sha256(source)})
+
+    def shutdown_protocol(self):
+        return ShutdownProtocol(True, b"\x05", b"sim>", b"quit\r")
+
+
+class M3Tests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def supply_media(self):
+        media = self.root / "media" / SYSTEM
+        media.mkdir(parents=True)
+        for name, data in (("43bsd-dist.tap", b"tape"),
+                           ("43bsd-miniroot.dsk", b"mini"),
+                           ("boot42", b"boot")):
+            (media / name).write_bytes(data)
+        return media
+
+    def test_manifest_is_supported_vax780_profile(self):
+        manifest = yaml.safe_load((ROOT / "systems/43bsd-vax/system.yml").read_text())
+        self.assertEqual(manifest["id"], SYSTEM)
+        self.assertEqual(manifest["machine"]["model"], "VAX-11/780")
+        self.assertEqual(manifest["emulator"]["profile"], "vax780")
+        self.assertEqual(manifest["prepared"]["disks"][0]["device"], "RA81")
+        backend = backend_for(SYSTEM)
+        self.assertIsInstance(backend, SimhBackend)
+        self.assertIn("/etc/shutdown -h now", backend.shutdown_protocol().guest_procedure)
+
+    def test_media_missing_unpinned_and_duplicate_mismatch(self):
+        self.assertTrue(all(r.status == "MISSING" for r in verify_media(SYSTEM, self.root)))
+        media = self.supply_media()
+        self.assertTrue(all(r.status == "UNPINNED" for r in verify_media(SYSTEM, self.root)))
+        (media / "43.tap").write_bytes(b"other")
+        tape = next(r for r in verify_media(SYSTEM, self.root)
+                    if r.logical_name == "simh-distribution-tape")
+        self.assertEqual(tape.status, "FAIL")
+
+    def test_install_requires_explicit_unpinned_boundary_and_renders_all_artifacts(self):
+        self.supply_media()
+        staging = self.root / "staging" / "fresh"
+        with self.assertRaisesRegex(UTMError, "allow-unpinned"):
+            prepare_install(SYSTEM, staging, self.root)
+        bootstrap, runtime = prepare_install(SYSTEM, staging, self.root, allow_unpinned=True)
+        for output in (bootstrap, runtime):
+            text = output.read_text()
+            self.assertNotIn("@", text)
+            self.assertIn("set xu disabled", text)
+        self.assertIn("attach rq1", bootstrap.read_text())
+        self.assertIn("attach rq0", runtime.read_text())
+
+    def test_install_rejects_unsafe_or_protected_staging(self):
+        self.supply_media()
+        with self.assertRaisesRegex(UTMError, "outside media"):
+            prepare_install(SYSTEM, self.root / "media/new", self.root, True)
+
+    @mock.patch("scripts.utmlib.set_golden_access")
+    @mock.patch("scripts.utmlib.golden_group_id", return_value=123)
+    def test_complete_atomic_golden_and_disposable_session_preserve_hash(self, _gid, _access):
+        staging = self.root / "staging"; staging.mkdir()
+        (staging / "rq0.dsk").write_bytes(b"installed")
+        destination, _ = import_golden(SYSTEM, staging, self.root)
+        before = sha256(destination / "rq0.dsk")
+        workspace, _ = prepare_session(SYSTEM, "vax-session", self.root)
+        (workspace / "rq0.dsk").write_bytes(b"mutated session")
+        self.assertEqual(sha256(destination / "rq0.dsk"), before)
+        self.assertTrue((destination / "metadata.json").is_file())
+        with self.assertRaisesRegex(UTMError, "overwrite"):
+            import_golden(SYSTEM, staging, self.root)
+
+    @mock.patch("scripts.utmlib.set_golden_access")
+    @mock.patch("scripts.utmlib.golden_group_id", return_value=123)
+    def test_golden_rejects_partial_set_and_never_imports_tape(self, _gid, _access):
+        staging = self.root / "empty"; staging.mkdir()
+        with self.assertRaisesRegex(UTMError, "incomplete"):
+            import_golden(SYSTEM, staging, self.root)
+        self.assertFalse((self.root / "golden" / SYSTEM).exists())
+
+    def test_vax_runtime_is_session_local_and_networkless(self):
+        self.supply_media()
+        golden = self.root / "golden" / SYSTEM; golden.mkdir(parents=True)
+        (golden / "rq0.dsk").write_bytes(b"gold")
+        prepare_session(SYSTEM, "isolated", self.root)
+        config = render_runtime(SYSTEM, "isolated", self.root).read_text()
+        self.assertIn(str(self.root / "sessions" / SYSTEM / "isolated/rq0.dsk"), config)
+        self.assertIn(str(self.root / "media" / SYSTEM / "boot42"), config)
+        self.assertIn("set xu disabled", config)
+        self.assertNotRegex(config.lower(), r"telnet|attach xu|attach xub")
+
+    def test_pinned_vax_discovery_contract(self):
+        manifest = yaml.safe_load((ROOT / "systems/43bsd-vax/system.yml").read_text())
+        self.assertEqual(manifest["emulator"]["executable"],
+                         "/opt/unix-time-machine/simh/v3.12-3/vax780")
+
+    def test_broker_request_uses_vax_profile_and_releases_disposable_disk(self):
+        golden = self.root / "golden" / SYSTEM; golden.mkdir(parents=True)
+        (golden / "rq0.dsk").write_bytes(b"immutable-vax")
+        before = sha256(golden / "rq0.dsk")
+        atomic_json(self.root / "state/broker-config.json",
+                    BrokerConfig(startup_timeout=1, readiness_timeout=1, idle_timeout=5,
+                                 absolute_timeout=5, shutdown_timeout=.5).as_dict())
+        with mock.patch("broker.manager.backend_for", return_value=VaxFakeBackend()):
+            record = Broker(self.root).request(SYSTEM, "vax-broker")
+        self.assertEqual(record.system_id, SYSTEM)
+        Broker(self.root).stop(record.session_id, guest_synced=True)
+        deadline = __import__("time").monotonic() + 2
+        while Broker(self.root).get(record.session_id).state != "released":
+            if __import__("time").monotonic() > deadline:
+                self.fail("VAX broker session did not release")
+            __import__("time").sleep(.02)
+        self.assertFalse(Path(record.workspace).exists())
+        self.assertEqual(sha256(golden / "rq0.dsk"), before)
+
+
+if __name__ == "__main__":
+    unittest.main()

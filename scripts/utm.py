@@ -64,18 +64,19 @@ def cmd_doctor(args):
                           f"{actual_owner}:{actual_group} {actual_mode:04o})")
         failures += status == "FAIL"
         print(f"{status:7} directory {path}{detail}")
-    try:
-        _, manifest = system_manifest("unix-v7-pdp11")
-        emulator = find_emulator(manifest)
-        result = subprocess.run([emulator, "-v"], stdin=subprocess.DEVNULL,
-                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                text=True, timeout=10)
-        if result.returncode != 0:
-            raise UTMError(f"SIMH executable is not runnable: {emulator} (exit {result.returncode})")
-        print(f"PASS    SIMH executable {emulator} is runnable")
-    except (ValueError, UTMError) as exc:
-        failures += 1
-        print(f"FAIL    {exc}")
+    for system_id in ("unix-v7-pdp11", "43bsd-vax"):
+        try:
+            _, manifest = system_manifest(system_id)
+            emulator = find_emulator(manifest)
+            result = subprocess.run([emulator, "-v"], stdin=subprocess.DEVNULL,
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                    text=True, timeout=10)
+            if result.returncode != 0:
+                raise UTMError(f"SIMH executable is not runnable: {emulator} (exit {result.returncode})")
+            print(f"PASS    SIMH executable {emulator} is runnable")
+        except (ValueError, UTMError) as exc:
+            failures += 1
+            print(f"FAIL    {exc}")
     return int(bool(failures))
 
 
@@ -108,7 +109,8 @@ def cmd_session_prepare(args):
 
 
 def cmd_install_prepare(args):
-    bootstrap, runtime = prepare_install(args.system_id, Path(args.staging), root_path(args))
+    bootstrap, runtime = prepare_install(args.system_id, Path(args.staging), root_path(args),
+                                         allow_unpinned=args.allow_unpinned)
     print(f"PASS    installation bootstrap hardware staged: {bootstrap}")
     print(f"PASS    installed-system runtime verification hardware staged: {runtime}")
     print("HUMAN_REQUIRED: run the bootstrap configuration first and follow the documented guest installation and phase-transition steps")
@@ -275,7 +277,9 @@ def parser():
     golden = sub.add_parser("golden").add_subparsers(dest="golden_command", required=True)
     imp = golden.add_parser("import"); imp.add_argument("system_id"); imp.add_argument("source"); imp.set_defaults(func=cmd_golden_import)
     install = sub.add_parser("install").add_subparsers(dest="install_command", required=True)
-    stage = install.add_parser("prepare"); stage.add_argument("system_id"); stage.add_argument("staging"); stage.set_defaults(func=cmd_install_prepare)
+    stage = install.add_parser("prepare"); stage.add_argument("system_id"); stage.add_argument("staging")
+    stage.add_argument("--allow-unpinned", action="store_true")
+    stage.set_defaults(func=cmd_install_prepare)
     session = sub.add_parser("session").add_subparsers(dest="session_command", required=True)
     prep = session.add_parser("prepare"); prep.add_argument("system_id"); prep.add_argument("--session-id"); prep.set_defaults(func=cmd_session_prepare)
     system = sub.add_parser("system").add_subparsers(dest="system_command", required=True)

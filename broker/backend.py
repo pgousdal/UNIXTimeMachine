@@ -23,6 +23,7 @@ class ShutdownProtocol:
     monitor_enter: bytes
     monitor_prompt: bytes
     monitor_quit: bytes
+    guest_procedure: str | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -30,6 +31,7 @@ class ShutdownProtocol:
             "monitor_enter_hex": self.monitor_enter.hex(),
             "monitor_prompt_hex": self.monitor_prompt.hex(),
             "monitor_quit_hex": self.monitor_quit.hex(),
+            "guest_procedure": self.guest_procedure,
         }
 
 
@@ -45,8 +47,11 @@ class Backend(ABC):
 
 
 class SimhBackend(Backend):
+    def __init__(self, guest_procedure: str | None = None):
+        self.guest_procedure = guest_procedure
+
     def shutdown_protocol(self) -> ShutdownProtocol:
-        return ShutdownProtocol(True, b"\x05", b"sim>", b"quit\r")
+        return ShutdownProtocol(True, b"\x05", b"sim>", b"quit\r", self.guest_procedure)
 
     def prepare(self, system_id: str, session_id: str, root: Path) -> PreparedSession:
         _, manifest = system_manifest(system_id)
@@ -62,5 +67,5 @@ def backend_for(system_id: str) -> Backend:
     _, manifest = system_manifest(system_id)
     family = manifest.get("emulator", {}).get("family")
     if family == "simh":
-        return SimhBackend()
+        return SimhBackend(manifest.get("shutdown", {}).get("guest_procedure"))
     raise ValueError(f"no session backend adapter for emulator family: {family!r}")

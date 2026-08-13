@@ -36,6 +36,7 @@ media:
       sha256: e2a6c5d420e2db62e992a95fce420bf311c3afa89b38381b8d212c92eef5a6cf
       sha1: 8056d35a2cb6529330f26db5754e858c9eab0462
       required: true
+      install_token: "@INSTALL_TAPE@"
       purpose: Operator-supplied UNIX Seventh Edition installation tape image
 prepared:
   disks:
@@ -55,6 +56,8 @@ readiness:
   patterns:
     - "login:"
   timeout_seconds: 120
+shutdown:
+  guest_procedure: "Run sync three times and attest only after completion; V7 has no qualified full OS shutdown claim"
 session:
   public_eligible: false
   reset_strategy: copy-on-session

@@ -7,5 +7,6 @@ utm_simh_archive_sha256: "0cc28f8fee3348dca3c42ab5406393ad1e78a7716085fcc24d7ddf
 utm_simh_archive_url: "https://github.com/open-simh/simh/archive/{{ utm_simh_commit }}.tar.gz"
 utm_simh_prefix: "/opt/unix-time-machine/simh/{{ utm_simh_version }}"
 utm_simh_executable: "{{ utm_simh_prefix }}/pdp11"
+utm_simh_vax_executable: "{{ utm_simh_prefix }}/vax780"
 utm_simh_provenance: "{{ utm_simh_prefix }}/PROVENANCE"
 utm_simh_archive: "/var/cache/unix-time-machine/simh-{{ utm_simh_commit }}.tar.gz"

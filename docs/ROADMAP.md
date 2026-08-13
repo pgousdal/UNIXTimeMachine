@@ -87,6 +87,11 @@ Repeatable 4.3BSD/VAX media contract, install, immutable golden, backend profile
 boot/readiness, reset, preservation checks and real-host qualification. Do not
 add a BBS door or public listener in M3.
 
+**IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION.** The manifest, external
+unverified-media boundary, RA81 profiles, pinned `vax780` provisioning, broker
+integration, tests, and Debian 13 procedure are present. M3 is not COMPLETE
+until the two-session evidence gate in the exhibit README is performed.
+
 ## M4 — AMIX / Amiga 3000
 FS-UAE A3000 profile, tape/media procedure, terminal handoff, reset.
 

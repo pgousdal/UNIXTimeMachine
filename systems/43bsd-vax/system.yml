@@ -9,18 +9,56 @@ machine:
   vendor: Digital Equipment Corporation
   model: VAX-11/780
   cpu: VAX
+  memory: 8M
 emulator:
   family: simh
-  profile: vax
+  profile: vax780
+  executable: /opt/unix-time-machine/simh/v3.12-3/vax780
+  configuration: simh.ini.in
+  installation_bootstrap_configuration: install-bootstrap.ini.in
+  installation_runtime_configuration: install-runtime.ini.in
+  boot_device: RQ0
+  storage:
+    controller: UDA50
+    device: RA81
 terminal:
   preferred: vt100
   fallback: ansi
 media:
   policy: external
   directory: 43bsd-vax
-  required: []
+  items:
+    - logical_name: simh-distribution-tape
+      filenames: [43bsd-dist.tap, 43.tap]
+      required: true
+      install_token: "@INSTALL_TAPE@"
+      purpose: Operator-created SIMH tape containing the stock 4.3BSD distribution files in documented order
+    - logical_name: miniroot-disk
+      filenames: [43bsd-miniroot.dsk, miniroot]
+      required: true
+      install_token: "@INSTALL_MINIROOT@"
+      purpose: Operator-created raw RA81 image containing the stock 4.3BSD miniroot
+    - logical_name: standalone-boot
+      filenames: [boot42]
+      required: true
+      install_token: "@INSTALL_BOOT@"
+      runtime_token: "@RUNTIME_BOOT@"
+      purpose: VAX standalone boot program compatible with the stock distribution
+prepared:
+  disks:
+    - id: system
+      unit: RQ0
+      device: RA81
+      golden_filename: rq0.dsk
+      session_filename: rq0.dsk
+      runtime_token: "@SESSION_RQ0@"
+readiness:
+  patterns: ["login:"]
+  timeout_seconds: 300
+shutdown:
+  guest_procedure: "As root run /etc/shutdown -h now and attest only after console halt completion is observed"
 session:
   public_eligible: false
   reset_strategy: copy-on-session
   network: terminal-only
-status: defined
+status: implemented-awaiting-real-host-qualification

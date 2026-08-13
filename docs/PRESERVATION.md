@@ -37,3 +37,11 @@ ambiguous teardown all retain evidence. Reconciliation reports orphan
 transaction directories and failed sessions but does not remove them. Audit
 events deliberately exclude terminal contents; the separate console transcript
 may contain guest-entered data and must be protected under local policy.
+## M3 VAX exhibit
+
+The 4.3BSD contract deliberately leaves the operator-created SIMH tape,
+miniroot image, and standalone loader unpinned. `UNPINNED` records a digest for
+comparison but is not authentication. Staging requires `--allow-unpinned` so
+that this boundary cannot be crossed accidentally. Golden publication accepts
+only `rq0.dsk`; installation tape/miniroot/loader remain external, and sessions
+receive disposable copies through the same atomic model as M1.

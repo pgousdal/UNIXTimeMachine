@@ -1,0 +1,25 @@
+set cpu 8m
+set cpu noidle
+set rq0 ra81
+attach rq0 @INSTALL_MINIROOT@
+set rq1 ra81
+attach rq1 @STAGING_RQ0@
+set rq2 disabled
+set rq3 disabled
+set rp disabled
+set hk disabled
+set rl disabled
+set tq disabled
+set tu disabled
+attach ts @INSTALL_TAPE@
+set dz disabled
+set lpt disabled
+set xu disabled
+set xub disabled
+set tti 7b
+set tto 7b
+set console log=@INSTALL_BOOTSTRAP_CONSOLE_LOG@
+load -o @INSTALL_BOOT@ 0
+deposit r10 9
+deposit r11 0
+run 2

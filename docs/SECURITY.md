@@ -2,6 +2,11 @@
 
 Historical systems are untrusted. Never bridge them directly to the public LAN, expose emulator monitors, grant host credentials, reuse operator secrets, or allow public sessions to mutate golden images. Default-deny outbound networking.
 
+The M3 VAX profile disables XU/XUB, DZ, and all unused controllers and the
+simulator is built with `NONETWORK=1`. It adds no listener, Telnet, SSH, remote
+monitor, or guest network. Its external unpinned media must be treated as
+untrusted input and is never executed by the host outside the pinned emulator.
+
 M1 is local-console only. The SIMH profile disables XQ/XU Ethernet and all
 additional terminal multiplexers; it does not configure console Telnet or any
 other listener. The SIMH control escape remains available only to the trusted

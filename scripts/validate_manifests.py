@@ -33,7 +33,7 @@ def main():
                 for key in ("id","unit","device","golden_filename","session_filename","runtime_token"):
                     if not isinstance(disk.get(key),str) or not disk[key]: raise ValueError(f"{path}: prepared disk missing {key}")
                 if not re.fullmatch(r"[a-z0-9][a-z0-9-]*",disk["id"]): raise ValueError(f"{path}: unsafe disk id")
-                if not re.fullmatch(r"RP[0-7]",disk["unit"]): raise ValueError(f"{path}: unsupported disk unit")
+                if not re.fullmatch(r"(?:RP[0-7]|RQ[0-3])",disk["unit"]): raise ValueError(f"{path}: unsupported disk unit")
                 if not re.fullmatch(r"@[A-Z0-9_]+@",disk["runtime_token"]): raise ValueError(f"{path}: bad runtime token")
                 if any("/" in disk[k] or "\\" in disk[k] for k in ("golden_filename","session_filename")): raise ValueError(f"{path}: unsafe disk filename")
                 if disk["id"] in seen_ids or disk["unit"] in seen_units or disk["runtime_token"] in seen_tokens: raise ValueError(f"{path}: duplicate prepared disk identity")

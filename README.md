@@ -75,3 +75,9 @@ Ctrl-E, waits boundedly for a live `sim>` prompt, sends `quit` only after that
 confirmation, and then waits boundedly for emulator exit. Automatic deadline
 failures never inject a shutdown sequence and preserve the workspace and
 emulator for inspection.
+
+M3 implements 4.3BSD on the SIMH VAX-11/780 and is **AWAITING REAL-HOST
+QUALIFICATION**. It uses the existing broker and preservation model, one RA81
+disk, external unpinned operator media, operator-assisted console boot, and
+4.3BSD `/etc/shutdown -h now` before the confirmed SIMH monitor handshake. See
+`systems/43bsd-vax/README.md` for the contract and qualification evidence gate.

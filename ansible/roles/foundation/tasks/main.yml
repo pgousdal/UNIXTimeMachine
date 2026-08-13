@@ -5,9 +5,9 @@
       - ansible_os_family == "Debian"
       - ansible_distribution == "Debian"
       - ansible_distribution_major_version == "13"
-    fail_msg: "M1 host provisioning is qualified only for Debian 13 (Trixie); qualify another release before broadening this assertion."
+    fail_msg: "UNIX Time Machine host provisioning is qualified only for Debian 13 (Trixie); qualify another release before broadening this assertion."
 
-- name: Install M1 runtime and explicit SIMH build dependencies
+- name: Install runtime and explicit SIMH build dependencies
   ansible.builtin.apt:
     name:
       - ca-certificates
@@ -48,6 +48,11 @@
     path: "{{ utm_simh_executable }}"
   register: utm_simh_executable_stat
 
+- name: Inspect installed VAX SIMH executable
+  ansible.builtin.stat:
+    path: "{{ utm_simh_vax_executable }}"
+  register: utm_simh_vax_executable_stat
+
 - name: Read installed SIMH provenance
   ansible.builtin.slurp:
     path: "{{ utm_simh_provenance }}"
@@ -60,6 +65,7 @@
     utm_simh_install_current: >-
       {{ utm_simh_provenance_stat.stat.exists and
          utm_simh_executable_stat.stat.exists and utm_simh_executable_stat.stat.executable and
+         utm_simh_vax_executable_stat.stat.exists and utm_simh_vax_executable_stat.stat.executable and
          (utm_simh_installed_provenance.content | b64decode) == lookup('ansible.builtin.template', 'PROVENANCE.j2') }}
   changed_when: false
 
@@ -86,6 +92,14 @@
           - NONETWORK=1
         chdir: "{{ utm_simh_build.path }}/simh-{{ utm_simh_commit }}"
 
+    - name: Build only the VAX-11/780 simulator without host networking support
+      ansible.builtin.command:
+        argv:
+          - make
+          - vax780
+          - NONETWORK=1
+        chdir: "{{ utm_simh_build.path }}/simh-{{ utm_simh_commit }}"
+
     - name: Create versioned SIMH installation directory
       ansible.builtin.file:
         path: "{{ utm_simh_prefix }}"
@@ -98,6 +112,15 @@
       ansible.builtin.copy:
         src: "{{ utm_simh_build.path }}/simh-{{ utm_simh_commit }}/BIN/pdp11"
         dest: "{{ utm_simh_executable }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install the canonical VAX-11/780 executable
+      ansible.builtin.copy:
+        src: "{{ utm_simh_build.path }}/simh-{{ utm_simh_commit }}/BIN/vax780"
+        dest: "{{ utm_simh_vax_executable }}"
         remote_src: true
         owner: root
         group: root

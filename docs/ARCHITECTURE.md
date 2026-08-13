@@ -108,10 +108,13 @@ Persistent JSON is deterministic and atomically replaced. A foreground SIMH
 process retains the local terminal; PID/config/session metadata enables status
 and a conservative stop command from another operator terminal.
 
-The M1 emulator supply chain is separate from historical media. On Debian 13,
+The emulator supply chain is separate from historical media. On Debian 13,
 Ansible retrieves the SHA-256-pinned archive for Open SIMH v3.12-3 commit
 `9d2bbe7c3271cfe57400ba9e8e3679f9f6b5944d`, builds only the network-disabled
-PDP-11 target, and installs `/opt/unix-time-machine/simh/v3.12-3/pdp11`.
+PDP-11 and VAX-11/780 targets with `NONETWORK=1`, and installs
+`/opt/unix-time-machine/simh/v3.12-3/{pdp11,vax780}`. M3 adds no alternate
+SIMH version. Its backend profile uses one RA81 disposable disk and the same
+controlling-PTY/readiness/confirmed-monitor-exit state machine.
 Runtime selection is this absolute manifest path, never ambient `PATH`. The
 source archive is retained in a controlled cache; the transient source/build
 tree is removed.

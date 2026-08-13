@@ -266,6 +266,15 @@ def render_runtime(system_id: str, session_id: str, host_root: Path) -> Path:
         if not path.is_file():
             raise UTMError(f"incomplete session disk set; missing: {path}")
         replacements[disk["runtime_token"]] = str(path.resolve())
+    media = manifest.get("media", {})
+    media_dir = host_root / "media" / media.get("directory", system_id)
+    for item in media.get("items", []):
+        if item.get("runtime_token"):
+            candidates = [media_dir / name for name in item["filenames"]]
+            artifact = next((path for path in candidates if path.is_file()), None)
+            if artifact is None:
+                raise UTMError(f"missing runtime support artifact: {item['logical_name']}")
+            replacements[item["runtime_token"]] = str(artifact.resolve())
     for token, value in replacements.items():
         if any(char in value for char in "\n\r\t ;\""):
             raise UTMError(f"runtime path contains characters unsafe for SIMH: {value}")
@@ -279,7 +288,8 @@ def render_runtime(system_id: str, session_id: str, host_root: Path) -> Path:
     return output
 
 
-def prepare_install(system_id: str, staging: Path, host_root: Path) -> tuple[Path, Path]:
+def prepare_install(system_id: str, staging: Path, host_root: Path,
+                    allow_unpinned: bool = False) -> tuple[Path, Path]:
     manifest_path, manifest = system_manifest(safe_id(system_id, "system id"))
     staging = staging.resolve()
     for protected in ((host_root / "media").resolve(), (host_root / "golden").resolve()):
@@ -288,12 +298,12 @@ def prepare_install(system_id: str, staging: Path, host_root: Path) -> tuple[Pat
     if staging.exists():
         raise UTMError(f"refusing to overwrite existing staging directory: {staging}")
     media_results = verify_media(system_id, host_root)
-    if any(result.status != "PASS" for result in media_results):
-        raise UTMError("canonical installation media must pass verification before staging")
+    unacceptable = {"FAIL", "MISSING"} if allow_unpinned else {"FAIL", "MISSING", "UNPINNED"}
+    if any(result.status in unacceptable for result in media_results):
+        hint = " (use --allow-unpinned only after recording provenance and hashes)" if not allow_unpinned else ""
+        raise UTMError("installation media contract is not satisfied" + hint)
     media = manifest["media"]
-    item = media["items"][0]
     media_dir = host_root / "media" / media.get("directory", system_id)
-    tape = next(path for path in (media_dir / name for name in item["filenames"]) if path.is_file())
     staging.mkdir(parents=True, mode=0o750)
     try:
         emulator = manifest["emulator"]
@@ -302,10 +312,13 @@ def prepare_install(system_id: str, staging: Path, host_root: Path) -> tuple[Pat
             (emulator["installation_runtime_configuration"], "install-runtime.ini"),
         )
         replacements = {
-            "@INSTALL_TAPE@": str(tape.resolve()),
             "@INSTALL_BOOTSTRAP_CONSOLE_LOG@": str((staging / "install-bootstrap-console.log").resolve()),
             "@INSTALL_RUNTIME_CONSOLE_LOG@": str((staging / "install-runtime-console.log").resolve()),
         }
+        for item in media["items"]:
+            if item.get("install_token"):
+                artifact = next(path for path in (media_dir / name for name in item["filenames"]) if path.is_file())
+                replacements[item["install_token"]] = str(artifact.resolve())
         for disk in prepared_disks(manifest):
             replacements[f"@STAGING_{disk['unit']}@"] = str((staging / disk["golden_filename"]).resolve())
         for value in replacements.values():

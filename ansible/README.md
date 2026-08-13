@@ -21,8 +21,14 @@ The idempotent role installs explicit build dependencies, downloads the pinned
 Open SIMH source archive with SHA-256 verification, builds only `pdp11` with
 host networking disabled, installs it at the project-selected absolute path,
 records provenance, removes the build tree, and creates the service account and
-protected directories. The verified source archive remains in the controlled
-system cache for auditing/reprovisioning. It installs no historical media.
+canonical directories. Implemented systems receive protected, setgid
+`root:unix-time-machine` mode 2750 media directories. The shared staging root is
+`unix-time-machine:unix-time-machine` mode 2770, so an enrolled operator can run
+`install prepare` without sudo and new staging directories inherit the service
+group. Media files remain protected publication objects (normally mode 0440);
+provisioning creates no historical media and does not weaken existing content.
+The verified source archive remains in the controlled system cache for
+auditing/reprovisioning.
 
 Provisioning does not select human operators. Enroll one existing local account
 explicitly and idempotently from the repository root:

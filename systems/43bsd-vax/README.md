@@ -163,15 +163,20 @@ qualification record. Nothing downloads or constructs copyrighted media.
 
 ## Human installation
 
-On the Debian 13 qualification host, from the repository checkout, use a new
-operator staging path and the canonical media path (the latter must not already
-exist):
+On the Debian 13 qualification host, first run `make provision` and explicitly
+enroll the operator as documented in the repository README. Provisioning creates
+`/srv/unix-time-machine/media/43bsd-vax` as `root:unix-time-machine` mode 2750
+and `/srv/unix-time-machine/staging` as
+`unix-time-machine:unix-time-machine` mode 2770. No manual directory creation is
+required. From the repository checkout, prepare media in an operator-owned
+temporary directory, then publish its protected files into the already-existing
+canonical directory:
 
 ```sh
 python3 scripts/utm.py media prepare-43bsd /path/to/operator-obtained/4.3BSD /tmp/43bsd-vax-media
-sudo mv /tmp/43bsd-vax-media /srv/unix-time-machine/media/43bsd-vax
+sudo cp -a /tmp/43bsd-vax-media/. /srv/unix-time-machine/media/43bsd-vax/
 sudo chown -R root:unix-time-machine /srv/unix-time-machine/media/43bsd-vax
-sudo chmod 0750 /srv/unix-time-machine/media/43bsd-vax
+sudo chmod 2750 /srv/unix-time-machine/media/43bsd-vax
 sudo chmod 0440 /srv/unix-time-machine/media/43bsd-vax/43bsd-dist.tap /srv/unix-time-machine/media/43bsd-vax/43bsd-miniroot.dsk /srv/unix-time-machine/media/43bsd-vax/boot42 /srv/unix-time-machine/media/43bsd-vax/metadata.json
 python3 scripts/utm.py media verify 43bsd-vax
 python3 scripts/utm.py install prepare 43bsd-vax /srv/unix-time-machine/staging/43bsd-vax-QUAL --allow-unpinned
@@ -193,7 +198,7 @@ SIMH creates `rq0.dsk` as the new target when it processes the bootstrap
 configuration. Console log files appear when their corresponding configuration
 runs. The canonical media directory and its ownership/modes are not changed.
 
-The `chmod` command intentionally fails if `boot42` was not supplied, stopping
+The file `chmod` command intentionally fails if `boot42` was not supplied, stopping
 the sequence before verification. If `/tmp/43bsd-vax-media` exists from an
 earlier attempt, inspect and move it aside; the preparation command will not
 overwrite it.

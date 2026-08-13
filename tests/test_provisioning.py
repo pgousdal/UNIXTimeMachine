@@ -85,6 +85,38 @@ class ProvisioningContractTests(unittest.TestCase):
         self.assertEqual(contract["group"], "unix-time-machine")
         self.assertEqual(contract["mode"], "0750")
 
+    def test_implemented_system_media_directories_are_inventory_driven_and_protected(self):
+        self.assertEqual(
+            self.defaults["utm_implemented_systems"],
+            ["unix-v7-pdp11", "43bsd-vax"],
+        )
+        task = next(task for task in self.tasks
+                    if task.get("name") == "Create protected per-system media directories")
+        contract = task["ansible.builtin.file"]
+        self.assertEqual(contract["path"], "/srv/unix-time-machine/media/{{ item }}")
+        self.assertEqual(task["loop"], "{{ utm_implemented_systems }}")
+        self.assertEqual(contract["owner"], "root")
+        self.assertEqual(contract["group"], "unix-time-machine")
+        self.assertEqual(contract["mode"], "2750")
+
+    def test_staging_is_service_group_writable_and_setgid(self):
+        task = next(task for task in self.tasks
+                    if task.get("name") == "Allow the service account to create runtime state")
+        contract = task["ansible.builtin.file"]
+        self.assertIn("staging", task["loop"])
+        self.assertEqual(contract["owner"], "unix-time-machine")
+        self.assertEqual(contract["group"], "unix-time-machine")
+        self.assertEqual(contract["mode"], "2770")
+
+    def test_no_canonical_directory_is_world_writable(self):
+        for task in self.tasks:
+            contract = task.get("ansible.builtin.file")
+            if not contract or contract.get("state") != "directory":
+                continue
+            mode = contract.get("mode")
+            if mode is not None:
+                self.assertEqual(int(mode, 8) & 0o002, 0, task.get("name"))
+
 
 if __name__ == "__main__":
     unittest.main()

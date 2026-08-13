@@ -165,15 +165,14 @@
     - media
     - golden
 
-- name: Create per-system M1 directories
+- name: Create protected per-system media directories
   ansible.builtin.file:
-    path: "/srv/unix-time-machine/{{ item }}"
+    path: "/srv/unix-time-machine/media/{{ item }}"
     state: directory
     owner: root
     group: unix-time-machine
     mode: "2750"
-  loop:
-    - media/unix-v7-pdp11
+  loop: "{{ utm_implemented_systems }}"
 
 - name: Create immutable golden publication target
   ansible.builtin.file:
@@ -191,6 +190,7 @@
     group: unix-time-machine
     mode: "2770"
   loop:
+    - staging
     - state
     - sessions
     - sessions/unix-v7-pdp11

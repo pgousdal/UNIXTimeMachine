@@ -92,12 +92,20 @@ Canonical host layout:
 /srv/unix-time-machine/
 ├── media/
 ├── golden/
+├── staging/
 ├── state/
 ├── sessions/
 ├── snapshots/
 ├── logs/
 └── reports/
 ```
+
+Ansible creates each implemented system's media directory as
+`root:unix-time-machine` mode 2750. Canonical media members remain root-owned
+and non-writable by operators. It creates `staging/` as
+`unix-time-machine:unix-time-machine` mode 2770: explicitly enrolled operators
+may create installation workspaces there, and setgid preserves the service
+group on new children. No canonical directory is world-writable.
 
 M1 data flow is `external media -> operator staging disk set -> atomic read-only
 golden disk set -> complete disposable session disk set`. UNIX V7 has two RP06

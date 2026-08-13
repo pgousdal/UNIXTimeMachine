@@ -10,3 +10,9 @@ utm_simh_executable: "{{ utm_simh_prefix }}/pdp11"
 utm_simh_vax_executable: "{{ utm_simh_prefix }}/vax780"
 utm_simh_provenance: "{{ utm_simh_prefix }}/PROVENANCE"
 utm_simh_archive: "/var/cache/unix-time-machine/simh-{{ utm_simh_commit }}.tar.gz"
+
+# Implemented system manifests whose protected canonical media publication
+# directories belong on every provisioned host. Planned systems are excluded.
+utm_implemented_systems:
+  - unix-v7-pdp11
+  - 43bsd-vax

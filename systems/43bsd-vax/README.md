@@ -31,6 +31,71 @@ Sources:
 
 ## External media contract
 
+### Reproducible preparation
+
+Obtain these nine stock components from the TUHS
+[`Archive/Distributions/UCB/4.3BSD/`](https://www.tuhs.org/Archive/Distributions/UCB/4.3BSD/)
+directory and place them, with these exact names, in one operator-controlled
+source directory:
+
+```text
+stand.gz
+miniroot.gz
+rootdump.gz
+srcsys.tar.gz
+usr.tar.gz
+vfont.tar.gz
+src.tar.gz
+new.tar.gz
+ingres.tar.gz
+```
+
+The repository does not fetch or bundle any of them. Do not decompress them
+manually. Optionally put exactly one `boot42` (already decoded) or `boot42.uue`
+or `boot42.uu` (original uuencode text) in that directory. The trustworthy
+documented route for the latter is the Computer History Wiki
+[`Boot42`](https://gunkies.org/wiki/Boot42) page, which identifies it as the
+4.2BSD bootstrap used for this SIMH procedure and publishes the original
+`begin 700 boot42` representation. The tool never contacts that page or a
+mirror. Because neither route has an authoritative canonical digest here, the
+operator must retain acquisition evidence and assess trust locally.
+
+Prepare into a new, explicit destination (the destination must not already
+exist and may not be inside the source directory):
+
+```sh
+python3 scripts/utm.py media prepare-43bsd SOURCE_DIR DEST_DIR
+```
+
+The command validates every gzip stream, losslessly emits `miniroot.gz` as
+`43bsd-miniroot.dsk`, constructs `43bsd-dist.tap`, and decodes or copies
+`boot42` when supplied. It never changes source files. `metadata.json` records
+deterministic source/output sizes, SHA-256 values, filenames, and transformation
+provenance. Outputs remain UNPINNED: these locally observed hashes document the
+operation but do not authenticate historical bytes.
+
+The tape writer reproduces the published 4.2/4.3BSD
+[`mkdisttap.pl`](https://gunkies.org/wiki/Mkdisttap.pl#4.2_&_4.3_BSD): each
+record is a little-endian 32-bit length, a block padded with zero bytes, and the
+same trailing length; a zero 32-bit tape mark follows every file and a second
+zero mark terminates the tape. The exact file order and block sizes are:
+
+| tape file | decompressed source | block size |
+|---:|---|---:|
+| 1 | `stand.gz` | 512 |
+| 2 | `miniroot.gz` | 10240 |
+| 3 | `rootdump.gz` | 10240 |
+| 4 | `srcsys.tar.gz` | 10240 |
+| 5 | `usr.tar.gz` | 10240 |
+| 6 | `vfont.tar.gz` | 10240 |
+| 7 | `src.tar.gz` | 10240 |
+| 8 | `new.tar.gz` | 10240 |
+| 9 | `ingres.tar.gz` | 10240 |
+
+This corrects the earlier prose order: `srcsys` precedes `usr`, matching both
+the cited constructor and the installation sequence (`mt fsf 3` extracts the
+kernel sources, then the next tape file supplies `/usr`).
+
 Place exactly one accepted filename for each item in
 `/srv/unix-time-machine/media/43bsd-vax/`:
 
@@ -40,9 +105,9 @@ Place exactly one accepted filename for each item in
 | raw RA81 miniroot image | `43bsd-miniroot.dsk` or `miniroot` | required, UNPINNED |
 | compatible standalone loader | `boot42` | required, UNPINNED |
 
-No size or hash is asserted. `media verify` reports SHA-256 but **does not
+No canonical size or hash is asserted. `media verify` reports SHA-256 but **does not
 authenticate** these files. The tape must be an operator-created SIMH tape with
-stand, miniroot, rootdump, usr, srcsys, src, vfont, new, and ingres in the order
+stand, miniroot, rootdump, srcsys, usr, vfont, src, new, and ingres in the order
 documented by the cited installation report. That ordering is a requirement of
 this operator convention; retain the original archive objects, acquisition
 source, license basis, conversion commands, and resulting hashes in the
@@ -50,7 +115,29 @@ qualification record. Nothing downloads or constructs copyrighted media.
 
 ## Human installation
 
-After recording all provenance and hashes:
+On the Debian 13 qualification host, from the repository checkout, use a new
+operator staging path and the canonical media path (the latter must not already
+exist):
+
+```sh
+python3 scripts/utm.py media prepare-43bsd /path/to/operator-obtained/4.3BSD /tmp/43bsd-vax-media
+sudo mv /tmp/43bsd-vax-media /srv/unix-time-machine/media/43bsd-vax
+sudo chown -R root:unix-time-machine /srv/unix-time-machine/media/43bsd-vax
+sudo chmod 0750 /srv/unix-time-machine/media/43bsd-vax
+sudo chmod 0440 /srv/unix-time-machine/media/43bsd-vax/43bsd-dist.tap /srv/unix-time-machine/media/43bsd-vax/43bsd-miniroot.dsk /srv/unix-time-machine/media/43bsd-vax/boot42 /srv/unix-time-machine/media/43bsd-vax/metadata.json
+python3 scripts/utm.py media verify 43bsd-vax
+python3 scripts/utm.py install prepare 43bsd-vax /srv/unix-time-machine/staging/43bsd-vax-QUAL --allow-unpinned
+/opt/unix-time-machine/simh/v3.12-3/vax780 /srv/unix-time-machine/staging/43bsd-vax-QUAL/install-bootstrap.ini
+```
+
+The `chmod` command intentionally fails if `boot42` was not supplied, stopping
+the sequence before verification. If `/tmp/43bsd-vax-media` exists from an
+earlier attempt, inspect and move it aside; the preparation command will not
+overwrite it.
+
+Then, after recording all provenance and hashes, continue at the miniroot
+console. The equivalent final three host commands above are retained here for
+orientation:
 
 ```sh
 python3 scripts/utm.py media verify 43bsd-vax
@@ -137,8 +224,10 @@ requires emulator exit. Uncertainty preserves workspace, transcript, and audit.
 Record operator, UTC times, host release, repository commit, and every command.
 
 1. `make provision` twice; record `vax780` version/provenance.
-2. Run `utm.py doctor`, `catalog`, and `media verify 43bsd-vax`.
-3. Record source provenance and SHA-256 for all three supplied artifacts.
+2. Prepare the operator-obtained components with `media prepare-43bsd`; retain
+   its metadata with the acquisition evidence.
+3. Run `utm.py doctor`, `catalog`, and `media verify 43bsd-vax`; record all
+   locally observed SHA-256 values.
 4. Prepare a new staging directory with `--allow-unpinned`.
 5. Perform both manual installation phases above.
 6. Boot staging under `install-runtime.ini`; verify 8 MiB/VAX identity and RA81.

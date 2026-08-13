@@ -17,6 +17,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from manifestlib import system_manifest
+from media43bsd import prepare_43bsd
 from utmlib import (DEFAULT_ROOT, UTMError, atomic_json, find_emulator, import_golden,
                     interactive_console, pid_alive, prepare_install, prepare_session, readiness,
                     render_runtime, safe_id, stop_process, verify_media)
@@ -89,6 +90,14 @@ def cmd_media_verify(args):
     for result in results:
         print(f"{result.status:8} {result.logical_name}: {result.detail}")
     return int(any(result.status in {"FAIL", "MISSING"} for result in results))
+
+
+def cmd_media_prepare_43bsd(args):
+    destination = prepare_43bsd(Path(args.source_dir), Path(args.destination_dir))
+    print(f"PASS    prepared stock 4.3BSD media: {destination}")
+    if not (destination / "boot42").is_file():
+        print("HUMAN_REQUIRED: supply boot42 or boot42.uue in the source set and prepare a new destination")
+    return 0
 
 
 def cmd_golden_import(args):
@@ -274,6 +283,9 @@ def parser():
     sub.add_parser("catalog").set_defaults(func=cmd_catalog)
     media = sub.add_parser("media").add_subparsers(dest="media_command", required=True)
     verify = media.add_parser("verify"); verify.add_argument("system_id"); verify.set_defaults(func=cmd_media_verify)
+    prepare43 = media.add_parser("prepare-43bsd")
+    prepare43.add_argument("source_dir"); prepare43.add_argument("destination_dir")
+    prepare43.set_defaults(func=cmd_media_prepare_43bsd)
     golden = sub.add_parser("golden").add_subparsers(dest="golden_command", required=True)
     imp = golden.add_parser("import"); imp.add_argument("system_id"); imp.add_argument("source"); imp.set_defaults(func=cmd_golden_import)
     install = sub.add_parser("install").add_subparsers(dest="install_command", required=True)

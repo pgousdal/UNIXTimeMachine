@@ -45,3 +45,11 @@ comparison but is not authentication. Staging requires `--allow-unpinned` so
 that this boundary cannot be crossed accidentally. Golden publication accepts
 only `rq0.dsk`; installation tape/miniroot/loader remain external, and sessions
 receive disposable copies through the same atomic model as M1.
+
+The repository-owned M3 preparation tool operates only on an explicit
+operator-supplied source directory and a new destination outside it. It
+validates and decompresses gzip inputs, reproduces the historically documented
+SIMH `mkdisttap` framing/order, optionally validates and decodes the documented
+`boot42` uuencode representation, and writes deterministic transformation
+metadata. It neither downloads media nor assigns canonical hashes; source bytes
+remain unchanged and every observed input/output hash is local provenance only.

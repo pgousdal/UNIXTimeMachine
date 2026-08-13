@@ -65,3 +65,18 @@ hash is `1b8e4e73e40a4044f2eed8e13d7f1f69d1cccd6ccfb582fa6e11735f9a77aba7`
 and was unchanged after two disposable-session qualifications. Failed session
 and timeout evidence remains preserved; no automatic evidence deletion was
 introduced.
+
+## Planned M4 AMIX boundary
+
+M4.0 defines, but does not execute, this flow: external immutable boot/root and
+patch floppies, an ordered installation-tape representation, and an A3000 ROM
+become inputs to private installation staging; only the installed RDB hardfile
+may proceed to an immutable golden and disposable session copy. Floppies must
+be writable private copies during installation. Tape and ROM attachments must
+be enforced read-only or replaced with private staging copies.
+
+AMIX media are external, operator-supplied and UNPINNED. No repository evidence
+currently authorizes canonical filenames, labels, member ordering, sizes or
+hashes. The future golden must contain only the installed hardfile and golden
+metadata, never installation media, ROM material, keys, or installation
+configuration. This is a planned contract, not an implemented AMIX importer.

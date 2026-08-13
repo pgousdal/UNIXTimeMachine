@@ -15,6 +15,24 @@ machine. Later
 FS-UAE, QEMU, MAME and specialist adapters implement that contract rather than
 adding emulator rules to the broker.
 
+M4.0 makes the adapter boundary explicit without adding an FS-UAE backend.
+`PreparedSession` carries a backend-selected `ConsoleTransport`; the launch
+record carries that transport and a named shutdown driver. The production
+supervisor currently accepts only the qualified `stdio-pty` transport and
+`simh-monitor` driver, failing closed for anything else. This preserves the
+SIMH byte path and state machine while reserving an `external-pty` capability
+whose emulator diagnostics are separate from the authoritative guest stream.
+Selecting that capability does not claim it is implemented.
+
+For future AMIX runtime sessions, the planned authoritative stream is an AMIX
+serial login transported through a broker-owned local PTY. The graphical Amiga
+display and emulator stdout/stderr are not broker consoles. The generic broker
+continues to own allocation, lifecycle, deadlines, Unix-domain attachment,
+transcript/audit, PID identity, preservation and reset/release. A future
+backend must own PTY endpoint materialization, emulator launch requirements,
+readiness interpretation, guest halt recognition and controlled emulator exit.
+No backend-name conditional is required in the broker.
+
 The validated lifecycle is:
 
 ```text

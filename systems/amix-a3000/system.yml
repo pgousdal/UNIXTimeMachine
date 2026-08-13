@@ -8,29 +8,75 @@ family: UNIX System V Release 4
 machine:
   vendor: Commodore
   model: Amiga 3000
+  compatibility_target: A3000UX
   cpu: Motorola 68030
   mmu_required: true
   fpu: 68882-compatible
+  chip_ram: 2M
+  fast_ram_qualification_target: 16M
+  chipset: ECS/A3000
+  scsi:
+    installation_tape_id: 4
+    system_disk_id: 6
+    system_disk_format: RDB hardfile
 emulator:
   family: fs-uae
   profile: a3000
+  implementation: planned
+  jit: disabled
+  rom: operator-supplied compatible A3000 Kickstart
 terminal:
-  preferred: vt100
-  fallback: ansi
+  planned_runtime_transport: local external serial PTY
+  qualification_required: true
 media:
   policy: external
+  authenticity: unpinned
   directory: amix-a3000
-  required:
-    - logical_name: boot-floppy
-      filename_hint: amix_21_boot.adf
-    - logical_name: root-floppy
-      filename_hint: amix_21_root.adf
-    - logical_name: patch-floppy
-      filename_hint: amix_21_patch.adf
-    - logical_name: install-tape
-      filename_hint: amix_21_tape
+  items:
+    - logical_name: amix-2.1-boot-floppy
+      required: true
+      operator_path: explicit
+      representation: floppy-image
+      staging: writable-private-copy-required
+    - logical_name: amix-2.1-root-install-floppy
+      required: true
+      operator_path: explicit
+      representation: floppy-image
+      staging: writable-private-copy-required
+    - logical_name: amix-2.1-installation-tape
+      required: true
+      operator_path: explicit
+      representation: ordered-multi-member-tape
+      ordering: operator-supplied-and-recorded
+      attachment: read-only-or-private-staging-copy
+    - logical_name: official-amix-2.1-patch-floppy
+      required: true
+      operator_path: explicit
+      representation: floppy-image
+      staging: writable-private-copy-required
+    - logical_name: compatible-a3000-kickstart-rom
+      required: true
+      operator_path: explicit
+      representation: rom-image
+      attachment: read-only-or-private-staging-copy
+    - logical_name: rom-key
+      required: false
+      required_when: supplied-rom-representation-requires-key
+      operator_path: explicit
+      representation: rom-key
+      attachment: read-only-or-private-staging-copy
+canonical_target:
+  base_release: AMIX 2.1
+  post_install_update: official AMIX 2.1 patch
+  intended_result: patch level 2a / 2.1c kernel
+  result_qualification_required: true
+preservation:
+  source_media: immutable-external
+  installation: writable-private-staging
+  golden_contents: installed-system-hardfile-and-metadata-only
+  sessions: disposable-copy
 session:
   public_eligible: false
   reset_strategy: copy-on-session
-  network: terminal-only
+  network: disabled
 status: defined

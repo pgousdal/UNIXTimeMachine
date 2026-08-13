@@ -69,6 +69,7 @@ class Broker:
             socket_path = self.store.directory / f"{session_id}.sock"
             transcript = self.root / "logs" / "sessions" / session_id / "console.log"
             launch = {"command": prepared.command, "patterns": prepared.readiness_patterns,
+                      "console": backend.console_transport(prepared).as_dict(),
                       "shutdown": backend.shutdown_protocol().as_dict()}
             atomic_json(prepared.workspace / "broker-launch.json", launch)
             with self.store.locked():

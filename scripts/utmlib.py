@@ -80,6 +80,9 @@ def verify_media(system_id: str, host_root: Path) -> list[MediaResult]:
     for item in media.get("items", []):
         logical = item["logical_name"]
         names = item.get("filenames", [])
+        if not names and item.get("operator_path") == "explicit":
+            results.append(MediaResult(logical, "MISSING", "operator must map this logical artifact to an explicit external path"))
+            continue
         candidates = [directory / name for name in names]
         found = [path for path in candidates if path.is_file()]
         if not found:

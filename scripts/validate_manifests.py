@@ -17,10 +17,13 @@ def main():
             media=data.get("media",{})
             if media.get("policy") != "external": raise ValueError(f"{path}: media.policy must be external")
             for item in media.get("items",[]):
-                for key in ("logical_name","filenames","required"):
+                for key in ("logical_name","required"):
                     if key not in item: raise ValueError(f"{path}: media item missing {key}")
-                if not isinstance(item["filenames"],list) or not item["filenames"]: raise ValueError(f"{path}: media filenames must be non-empty list")
-                if any(not isinstance(n,str) or "/" in n or "\\" in n or n in (".","..") for n in item["filenames"]): raise ValueError(f"{path}: unsafe media filename")
+                names=item.get("filenames")
+                if names is None:
+                    if item.get("operator_path") != "explicit": raise ValueError(f"{path}: media item without filenames requires explicit operator path")
+                elif not isinstance(names,list) or not names: raise ValueError(f"{path}: media filenames must be non-empty list")
+                elif any(not isinstance(n,str) or "/" in n or "\\" in n or n in (".","..") for n in names): raise ValueError(f"{path}: unsafe media filename")
                 if not isinstance(item["required"],bool): raise ValueError(f"{path}: media required must be bool")
                 if item.get("size") is not None and (not isinstance(item["size"],int) or item["size"] < 0): raise ValueError(f"{path}: bad media size")
                 if item.get("sha256") is not None and not re.fullmatch(r"[0-9a-fA-F]{64}",item["sha256"]): raise ValueError(f"{path}: bad sha256")

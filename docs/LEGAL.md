@@ -8,3 +8,9 @@ supported TUHS-published SIMH bitstream; they are not an assertion that the
 underlying physical tape is authenticated, that alternate V7 media are invalid,
 or that possession/use/redistribution is lawful. Acquisition and use must be
 evaluated by the operator for their jurisdiction and source terms.
+
+M4 supplies no AMIX floppy/tape data, Kickstart ROM, or ROM key and performs no
+automated acquisition. Those proprietary artifacts remain external and
+operator-supplied. Their archival availability, identity, and redistribution
+rights are not established by this repository; observed digests will be local
+UNPINNED provenance until authoritative evidence exists.

@@ -19,6 +19,7 @@ from .config import BrokerConfig
 from .models import SessionState
 from .process import process_start_ticks
 from .store import Store, utc_now
+from .shutdown import shutdown_driver
 
 
 def configure_controlling_terminal() -> None:
@@ -75,6 +76,11 @@ class Supervisor:
         record = self.update(supervisor_pid=os.getpid(),
                              supervisor_start_ticks=process_start_ticks(os.getpid()))
         spec = json.loads((Path(record.workspace) / "broker-launch.json").read_text())
+        console = spec.get("console", {"kind": "stdio-pty"})
+        if console.get("kind") != "stdio-pty":
+            raise RuntimeError(f"unsupported console transport: {console.get('kind')!r}")
+        shutdown = spec["shutdown"]
+        stop_driver = shutdown_driver(shutdown)
         socket_path = Path(record.socket_path)
         socket_path.unlink(missing_ok=True)
         listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -100,10 +106,6 @@ class Supervisor:
         tail = b""
         shutdown_deadline = None
         shutdown_phase = None
-        shutdown_tail = b""
-        shutdown = spec["shutdown"]
-        monitor_already_active = False
-        live_monitor_tail = b""
         try:
             while True:
                 now = time.monotonic()
@@ -119,24 +121,15 @@ class Supervisor:
                     self.control_log("stop request accepted")
                     if request.get("guest_synced"):
                         self.control_log("guest-sync attestation present")
-                    if (shutdown.get("monitor_may_already_be_active")
-                            and monitor_already_active):
-                        self.control_log("monitor already active; fresh prompt previously observed")
-                        os.write(master, bytes.fromhex(shutdown["monitor_quit_hex"]))
-                        self.control_log("quit sent")
-                        shutdown_phase = "exit"
-                    else:
-                        os.write(master, bytes.fromhex(shutdown["monitor_enter_hex"]))
-                        self.control_log("Ctrl-E sent")
-                        shutdown_phase = "monitor"
-                        shutdown_tail = b""
+                    shutdown_phase = stop_driver.begin(
+                        lambda data: os.write(master, data), self.control_log)
                     shutdown_deadline = now + self.config.shutdown_timeout
                 if shutdown_deadline is not None and now >= shutdown_deadline and process.poll() is None:
                     if shutdown_phase == "monitor":
                         self.control_log("monitor prompt not observed")
-                        reason = "SIMH monitor entry unconfirmed; process left running for inspection"
+                        reason = stop_driver.timeout_reason(shutdown_phase)
                     else:
-                        reason = "safe shutdown unconfirmed; process left running for inspection"
+                        reason = stop_driver.timeout_reason(shutdown_phase)
                     self.control_log("shutdown timeout/failure")
                     self.store.audit("timeout", self.store.load(self.session_id), {"kind": "shutdown"})
                     self.update(failure=reason, stop_reason=self.stop_reason)
@@ -173,20 +166,12 @@ class Supervisor:
                             else: raise
                         if data:
                             transcript.write(data); tail = (tail + data)[-16384:]
-                            if (shutdown.get("monitor_may_already_be_active") and self.ready
-                                    and shutdown_phase is None):
-                                live_monitor_tail = (live_monitor_tail + data)[-4096:]
-                                if bytes.fromhex(shutdown["monitor_prompt_hex"]) in live_monitor_tail:
-                                    monitor_already_active = True
-                                    self.control_log("fresh live monitor prompt observed")
-                            if shutdown_phase == "monitor":
-                                shutdown_tail = (shutdown_tail + data)[-4096:]
-                                if bytes.fromhex(shutdown["monitor_prompt_hex"]) in shutdown_tail:
-                                    self.control_log("monitor prompt observed")
-                                    os.write(master, bytes.fromhex(shutdown["monitor_quit_hex"]))
-                                    self.control_log("quit sent")
-                                    shutdown_phase = "exit"
-                                    shutdown_deadline = now + self.config.shutdown_timeout
+                            prior_phase = shutdown_phase
+                            shutdown_phase = stop_driver.observe(
+                                data, self.ready, shutdown_phase,
+                                lambda payload: os.write(master, payload), self.control_log)
+                            if prior_phase == "monitor" and shutdown_phase == "exit":
+                                shutdown_deadline = now + self.config.shutdown_timeout
                             self.last_activity = now; self.update(last_activity_at=utc_now())
                             if self.attached is not None:
                                 try: self.attached.sendall(data)
@@ -208,17 +193,12 @@ class Supervisor:
                             before = data.split(b"\x1d", 1)[0]
                             if before:
                                 os.write(master, before)
-                                if shutdown.get("monitor_may_already_be_active"):
-                                    monitor_already_active = False
-                                    live_monitor_tail = b""
+                                stop_driver.invalidate_on_input()
                             self.detach(selector)
                         else:
                             os.write(master, data)
-                            if shutdown.get("monitor_may_already_be_active"):
-                                # Any subsequent guest/monitor input makes earlier monitor
-                                # evidence stale; only later live PTY output can confirm it again.
-                                monitor_already_active = False
-                                live_monitor_tail = b""
+                            # Input invalidates backend-owned live prompt evidence.
+                            stop_driver.invalidate_on_input()
                             self.last_activity = now
                             self.update(last_activity_at=utc_now())
                 # Consume all console events selected at the boundary before deciding that

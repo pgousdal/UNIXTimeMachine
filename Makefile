@@ -25,4 +25,4 @@ qualify: check
 	$(PYTHON) scripts/utm.py media verify unix-v7-pdp11
 	$(PYTHON) scripts/utm.py media verify 43bsd-vax
 	@echo "HUMAN_REQUIRED: perform both real-host session boots in systems/unix-v7-pdp11/README.md"
-	@echo "HUMAN_REQUIRED: perform the M3 evidence gate in systems/43bsd-vax/README.md"
+	@echo "M3_COMPLETE: reproduction procedure and qualification record are in systems/43bsd-vax/README.md"

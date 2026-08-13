@@ -76,11 +76,16 @@ confirmation, and then waits boundedly for emulator exit. Automatic deadline
 failures never inject a shutdown sequence and preserve the workspace and
 emulator for inspection.
 
-M3 implements 4.3BSD on the SIMH VAX-11/780 and is **AWAITING REAL-HOST
-QUALIFICATION**. It uses the existing broker and preservation model, one RA81
+M3 implements 4.3BSD on the SIMH VAX-11/780 and is **COMPLETE**. Real-host
+qualification with pinned Open SIMH v3.12-3 covered reproducible external-media
+preparation, installation, an immutable golden, two fresh disposable happy
+paths, and a preservation-safe idle-timeout failure. It uses the existing
+broker and preservation model, one RA81
 disk, external unpinned operator media, operator-assisted console boot, and
 4.3BSD `/etc/shutdown -h now` before the confirmed SIMH monitor handshake. See
-`systems/43bsd-vax/README.md` for the contract and qualification evidence gate.
+`systems/43bsd-vax/README.md` for the contract and final qualification record.
 Unlike V7, 4.3BSD halt can itself reach the monitor; its profile accepts only a
 fresh live-PTY `sim>` observation, then broker stop skips Ctrl-E and owns the
-prompt-gated `quit`/exit path. Historical transcript text is never proof.
+prompt-gated `quit`/exit path. Historical transcript text is never proof. The
+qualified golden `/srv/unix-time-machine/golden/43bsd-vax/rq0.dsk` has SHA-256
+`1b8e4e73e40a4044f2eed8e13d7f1f69d1cccd6ccfb582fa6e11735f9a77aba7`.

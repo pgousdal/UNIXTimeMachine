@@ -53,3 +53,15 @@ SIMH `mkdisttap` framing/order, optionally validates and decodes the documented
 `boot42` uuencode representation, and writes deterministic transformation
 metadata. It neither downloads media nor assigns canonical hashes; source bytes
 remain unchanged and every observed input/output hash is local provenance only.
+
+Final M3 qualification retained that distinction. The locally observed hashes
+are `26e34688d233f25754ab7b7d3bdcaccb55ff7e670e9977d29fa1afb76f5675fe`
+for `43bsd-miniroot.dsk`,
+`d192e5f90bf12ff390b10ae81e25799e56c8d3b3623ba3a497b5fe2841766bf9`
+for `43bsd-dist.tap`, and
+`a7bacc518350f4ebb1c21e7f578f91dd843ef42c26d912a1a9d227b2fac07eff`
+for `boot42`; all remain UNPINNED. The published mode-0440 golden `rq0.dsk`
+hash is `1b8e4e73e40a4044f2eed8e13d7f1f69d1cccd6ccfb582fa6e11735f9a77aba7`
+and was unchanged after two disposable-session qualifications. Failed session
+and timeout evidence remains preserved; no automatic evidence deletion was
+introduced.

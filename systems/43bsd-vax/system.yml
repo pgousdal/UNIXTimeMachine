@@ -63,4 +63,4 @@ session:
   public_eligible: false
   reset_strategy: copy-on-session
   network: terminal-only
-status: implemented-awaiting-real-host-qualification
+status: complete

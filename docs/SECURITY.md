@@ -48,3 +48,10 @@ Real-host qualification confirmed both safety branches: the attested normal
 stop observed a fresh monitor prompt before sending `quit`, while idle timeout
 and interrupted-supervisor reconciliation sent no shutdown input, performed no
 forced kill, and preserved the emulator, workspace, and audit evidence.
+
+M3 real-host qualification additionally confirmed the VAX-specific safe stop:
+after 4.3BSD clean halt exposed a fresh live `sim>` prompt, the broker recognized
+the already-active monitor, sent no redundant Ctrl-E, owned `quit`, observed
+exit, and reset/released the disposable session. Its never-attached idle-timeout
+case sent no control input or force kill and preserved the emulator and
+workspace. Qualification-only short timeouts are not production defaults.

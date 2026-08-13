@@ -87,14 +87,29 @@ Repeatable 4.3BSD/VAX media contract, install, immutable golden, backend profile
 boot/readiness, reset, preservation checks and real-host qualification. Do not
 add a BBS door or public listener in M3.
 
-**IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION.** The manifest, external
-unverified-media boundary, RA81 profiles, pinned `vax780` provisioning, broker
-integration, tests, and Debian 13 procedure are present. M3 is not COMPLETE
-until the two-session evidence gate in the exhibit README is performed.
-`m3-qualification-1` is preserved failed evidence: 4.3BSD reached the live SIMH
-monitor cleanly, but the operator entered `quit` before broker stop, producing
-the correct unsolicited-exit `ACTIVE -> FAILED` result. M3 remains
-**IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION** pending a fresh run.
+**COMPLETE.** The manifest, external-unpinned-media boundary, RA81 install and
+runtime profiles, pinned Open SIMH v3.12-3 `vax780` provisioning, broker
+integration, tests, and Debian 13 real-host qualification are complete.
+
+The installed guest booted multi-user as 4.3BSD on an 8 MiB VAX-11/780 with
+`/dev/ra0a` on `/`, `/dev/ra0g` on `/mnt`, and `/dev/ra0h` on `/usr`; `df`
+reported 7429, 245225, and 138584 KB respectively. The immutable golden
+`rq0.dsk` SHA-256 remained
+`1b8e4e73e40a4044f2eed8e13d7f1f69d1cccd6ccfb582fa6e11735f9a77aba7`.
+Sessions `m3-qualification-2` and `m3-qualification-3`, each freshly copied
+from that golden, passed readiness, root login, filesystem checks, clean guest
+halt to a live `sim>`, broker-owned quit, exit, reset, and release. The first
+also passed repeated detach/reattach. `m3-qualification-timeout` recorded
+STARTING -> `timeout(kind=idle)` -> FAILED without Ctrl-E, quit, force kill, or
+cleanup; its emulator and workspace were preserved.
+
+`m3-qualification-1` also remains preserved failed evidence: its guest halt
+reached the live monitor, but an operator-owned manual `quit` correctly caused
+an unsolicited emulator-exit failure. This finding led to the qualified
+monitor-already-active backend path. Other resolved findings were the private
+writable bootstrap-miniroot staging copy and implemented-system-driven
+provisioning of the VAX media directory plus shared staging root. Qualification
+limits were temporary; normal production broker defaults remain in force.
 
 ## M4 — AMIX / Amiga 3000
 FS-UAE A3000 profile, tape/media procedure, terminal handoff, reset.

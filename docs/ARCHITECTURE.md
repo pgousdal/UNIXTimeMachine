@@ -84,7 +84,10 @@ only from new live PTY bytes after guest readiness; it never scans the persisted
 transcript. Later operator input invalidates the evidence. An attested stop may
 consume valid evidence and send `quit` without Ctrl-E, while the default/V7
 profile remains Ctrl-E -> fresh prompt -> quit. Emulator exit is clean only in
-the resulting broker-controlled exit phase.
+the resulting broker-controlled exit phase. M3 real-host qualification exercised
+this complete path twice from fresh disposable copies; the first included
+multiple detach/reattach cycles. A never-attached timeout separately confirmed
+that failure preserves the emulator and workspace without control injection.
 
 Canonical host layout:
 
@@ -106,6 +109,12 @@ and non-writable by operators. It creates `staging/` as
 `unix-time-machine:unix-time-machine` mode 2770: explicitly enrolled operators
 may create installation workspaces there, and setgid preserves the service
 group on new children. No canonical directory is world-writable.
+
+Final M3 provisioning qualification confirmed those paths on a fresh host. The
+first run changed only the expected VAX media-directory addition; the second
+was idempotent (`ok=17`, `changed=0`, `unreachable=0`, `failed=0`). An enrolled
+unprivileged operator prepared a VAX installation workspace beneath canonical
+`staging/` without sudo.
 
 M1 data flow is `external media -> operator staging disk set -> atomic read-only
 golden disk set -> complete disposable session disk set`. UNIX V7 has two RP06

@@ -1,7 +1,82 @@
 # 4.3BSD on a VAX-11/780 (M3)
 
-State: **IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION**. Nothing below is a
-claim of successful operation on the Debian 13 qualification host.
+State: **COMPLETE**. Installation and the broker lifecycle were qualified on a
+real host with pinned Open SIMH v3.12-3 `vax780`.
+
+## Final real-host qualification record
+
+Operator-obtained stock 4.3BSD components were reproducibly prepared with these
+locally observed provenance hashes:
+
+```text
+43bsd-miniroot.dsk  26e34688d233f25754ab7b7d3bdcaccb55ff7e670e9977d29fa1afb76f5675fe
+43bsd-dist.tap      d192e5f90bf12ff390b10ae81e25799e56c8d3b3623ba3a497b5fe2841766bf9
+boot42              a7bacc518350f4ebb1c21e7f578f91dd843ef42c26d912a1a9d227b2fac07eff
+```
+
+They remain protected and `UNPINNED`: these hashes record local provenance and
+do not assert canonical authentication. A private writable bootstrap-miniroot
+copy was required because the preserved mode-0440 miniroot is used as `ra0`,
+including swap. Bootstrap reached `4.3 BSD UNIX #1`, 8 MiB real memory, `ra0`,
+`ra1`, and `ts0`, then changed root to `ra0a`. `disk=ra1 type=ra81 tape=ts xtr`
+completed with `Root filesystem extracted`. The second phase created `/usr` on
+`ra0h`, extracted system/kernel and `/usr`, passed `/usr` fsck, installed
+`fstab.ra81`, created `ra0g`, synced, and rebooted.
+
+The installed system reached multi-user `login:` and allowed root login. Its
+mounted layout and matching fstab were `/dev/ra0a` on `/`, `/dev/ra0g` on
+`/mnt`, and `/dev/ra0h` on `/usr`; `df` reported 7429, 245225, and 138584 KB.
+`/etc/shutdown -h now` produced `syncing disks... done`, `HALT`, `Infinite loop
+...`, and a live `sim>` prompt.
+
+The immutable golden is `/srv/unix-time-machine/golden/43bsd-vax/rq0.dsk`,
+SHA-256 exactly:
+
+```text
+1b8e4e73e40a4044f2eed8e13d7f1f69d1cccd6ccfb582fa6e11735f9a77aba7
+```
+
+It was published `root:unix-time-machine` mode 0440 and stayed unchanged.
+`m3-qualification-2` passed readiness, READY -> ACTIVE, root/filesystem checks,
+four syncs, detach/reattach, clean halt, fresh live-monitor detection, attested
+stop with no redundant Ctrl-E, broker-owned `quit`, emulator exit, and STOPPING
+-> RESETTING -> RELEASED. `m3-qualification-3`, a completely fresh second copy
+from the same golden, independently passed boot, login, filesystems, four syncs,
+clean halt, broker shutdown, reset, and release.
+
+The successful supervisor record states, in order: `fresh live monitor prompt
+observed`, `stop request accepted`, `guest-sync attestation present`, `monitor
+already active; fresh prompt previously observed`, `quit sent`, and `emulator
+exit observed`.
+
+`m3-qualification-timeout`, never attached and using a temporary short
+qualification timeout, recorded STARTING -> `timeout(kind=idle)` -> FAILED with
+`idle timeout; emulator and workspace preserved for inspection`. It received no
+cleanup, Ctrl-E, quit, or force kill. All failed qualification sessions and logs
+remain historical evidence; no automatic evidence deletion was added.
+Qualification limits/timeouts are not production configuration.
+
+Provisioning correction commit `34fb455` added the implemented-system VAX media
+directory and shared staging root. The first final run changed only the expected
+VAX media-directory correction; the second reported `ok=17`, `changed=0`,
+`unreachable=0`, `failed=0`. Media directories were mode 2750
+`root:unix-time-machine`, staging mode 2770
+`unix-time-machine:unix-time-machine`, and golden directories mode 0750
+`root:unix-time-machine`; none was world-writable. An enrolled unprivileged
+operator successfully ran `install prepare 43bsd-vax` in the canonical staging
+root with `--allow-unpinned` and without sudo.
+
+```sh
+python3 scripts/utm.py install prepare 43bsd-vax \
+  /srv/unix-time-machine/staging/install-43bsd-vax-provision-check \
+  --allow-unpinned
+```
+
+The three qualification findings are resolved: use a private staged writable
+bootstrap miniroot while preserving the canonical copy; accept only fresh live
+monitor-already-active evidence after the guest halt while retaining V7's
+Ctrl-E path; and provision implemented-system media directories plus canonical
+shared staging.
 
 ## Preserved `m3-qualification-1` evidence
 
@@ -16,7 +91,7 @@ unexpectedly (0)`.
 
 Retain this as failed qualification evidence: the manual quit was outside
 broker control and cannot prove the broker-controlled shutdown/reset/release
-path. It does not make M3 complete. The profile now permits a fresh live
+path. It did not by itself make M3 complete. The profile now permits a fresh live
 post-readiness `sim>` marker to record monitor-already-active state. An attested
 broker stop consumes that state, skips Ctrl-E, sends `quit`, and waits for exit.
 Transcript history is never consulted as proof, and an unsolicited exit remains
@@ -258,8 +333,9 @@ sync
 reboot
 ```
 
-These commands are historically sourced but still HUMAN_REQUIRED and
-unqualified here. Boot the runtime configuration again to reach multi-user
+These commands are historically sourced and remain HUMAN_REQUIRED for a new
+installation; the final real-host run qualified them. Boot the runtime
+configuration again to reach multi-user
 `login:`. Confirm `real mem = 8388608`, `ra0`, `mount`, and `df`; disable guest
 network daemons in the staged guest before publication even though no emulated
 network device exists. Installation tapes and miniroot are never imported.
@@ -291,7 +367,7 @@ emulator exit. If no fresh monitor evidence exists it retains the generic
 Ctrl-E -> fresh `sim>` -> `quit` fallback. Transcript history is not evidence.
 Uncertainty preserves workspace, transcript, and audit.
 
-## Debian 13 qualification gate
+## Debian 13 qualification procedure
 
 Record operator, UTC times, host release, repository commit, and every command.
 
@@ -322,7 +398,7 @@ Record operator, UTC times, host release, repository commit, and every command.
 15. Archive console transcripts, supervisor diagnostics, broker audit JSONL,
     media report, golden metadata/hashes, and qualification notes outside Git.
 
-Only after reviewing that evidence may ROADMAP state COMPLETE.
+This evidence gate was completed for M3; retain the procedure for reproduction.
 
 For the fresh broker rerun using the already imported golden:
 
@@ -363,9 +439,10 @@ filesystem checks, and clean shutdown succeed, publish only the declared target:
 sudo python3 scripts/utm.py golden import 43bsd-vax /srv/unix-time-machine/staging/install-43bsd-vax-2
 ```
 
-## Explicit unresolved assumptions
+## Preserved provenance boundary
 
 No canonical hashes/sizes for the archive-derived artifacts are claimed. The
 exact provenance and correctness of an operator's `boot42`, miniroot conversion,
-and SIMH tape construction remain qualification inputs. The documented commands
-have not yet been executed with pinned v3.12-3 on the target Debian 13 host.
+and SIMH tape construction remain local provenance inputs rather than canonical
+authentication. The documented commands were successfully executed with pinned
+Open SIMH v3.12-3 during final real-host qualification.

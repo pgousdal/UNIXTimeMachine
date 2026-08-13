@@ -35,6 +35,15 @@ transcript and a mode-0660 Unix-domain socket under `state/broker/`. `attach`
 relays the local terminal; Ctrl-E is transparent to SIMH and Ctrl-] is the local
 detach escape. Only one attachment is allowed. No TCP socket is created.
 
+On Linux the emulator child is a new session leader. Before exec it explicitly
+acquires the PTY slave on fd 0 as its controlling terminal (`TIOCSCTTY`) and
+makes its process group that terminal's foreground group (`tcsetpgrp`). Merely
+opening the slave in the supervisor and duplicating it onto fd 0/1/2 does not
+create those relationships. The supervisor leaves the slave's initial termios
+intact: Open SIMH snapshots it, retains `ISIG`, selects Ctrl-E as `VINTR`, and
+uses the resulting foreground-process-group `SIGINT` to leave simulated
+execution for its monitor.
+
 Admission counts every non-released record, including FAILED evidence, and
 applies total and per-system limits. Startup bounds supervisor, emulator and
 local-console transport creation. For operator-booted systems, the first

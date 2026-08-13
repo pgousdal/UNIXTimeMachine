@@ -28,6 +28,19 @@ also evidence: its old supervisor sent Ctrl-E and `quit` as one blind sequence,
 allowing the V7 shell to receive `quit`. Do not reuse, release, or run the new
 recovery command against either preserved qualification record.
 
+The third attempt, `m2-qualification-3`, and fourth attempt,
+`m2-qualification-4`, are also preserved evidence. Both passed the guest and
+golden-disk checks but failed to produce a fresh monitor prompt after Ctrl-E.
+The fourth attempt disproved the parent-side raw-mode correction: its SIMH had
+`TT=?`. Open SIMH v3.12-3 snapshots fd 0 termios in `sim_ttinit`; on each run it
+clears `ECHO` and `ICANON`, retains `ISIG`, assigns Ctrl-E to `VINTR`, and
+installs a `SIGINT` handler before simulated execution. Its POSIX keyboard read
+path does not compare an ordinary input byte with Ctrl-E. Consequently the
+slave must be SIMH's controlling terminal and SIMH's process group must be that
+terminal's foreground group. The broker now establishes those relationships
+after `Popen` performs `setsid()` and before exec, and no longer preemptively
+sets the slave raw (which cleared `ISIG` before SIMH took its snapshot).
+
 Use this exact sequence for a fresh M2 rerun:
 
 ```sh
@@ -36,24 +49,36 @@ export UTM_ROOT=/srv/unix-time-machine
 sha256sum "$UTM_ROOT/golden/unix-v7-pdp11/rp0.dsk" \
           "$UTM_ROOT/golden/unix-v7-pdp11/rp1.dsk"
 python3 scripts/utm.py broker config
-python3 scripts/utm.py broker request unix-v7-pdp11 --session-id m2-qualification-3
-python3 scripts/utm.py broker status m2-qualification-3
-python3 scripts/utm.py broker attach m2-qualification-3
+python3 scripts/utm.py broker request unix-v7-pdp11 --session-id m2-qualification-5
+python3 scripts/utm.py broker status m2-qualification-5
+python3 scripts/utm.py broker attach m2-qualification-5
 ```
 
 At the SIMH console enter `boot`, then `hp(0,0)unix`, then Ctrl-D. Confirm
 `mem = 2020544` and `login:`. Log in as root, verify `/usr`, run `sync` four times,
-and detach with Ctrl-]. Then run:
+and detach with Ctrl-]. While the emulator is running, take the
+`emulator_pid=PID` from `broker status` and record the corrected topology and
+SIMH run-mode termios:
 
 ```sh
-python3 scripts/utm.py broker status m2-qualification-3
-python3 scripts/utm.py broker stop m2-qualification-3 --guest-synced
-python3 scripts/utm.py broker release m2-qualification-3
-python3 scripts/utm.py broker status m2-qualification-3
+ps -o pid,ppid,sid,pgid,tpgid,tty,stat,cmd -p PID
+readlink /proc/PID/fd/0
+stty -a -F /proc/PID/fd/0
+```
+
+The tty and fd 0 must name the same `/dev/pts/N`; SID, PGID, and TPGID must all
+equal the emulator PID. The run-mode flags must include `isig`, `-icanon`, and
+`-echo`, with `intr = ^E`. Then run:
+
+```sh
+python3 scripts/utm.py broker status m2-qualification-5
+python3 scripts/utm.py broker stop m2-qualification-5 --guest-synced
+python3 scripts/utm.py broker release m2-qualification-5
+python3 scripts/utm.py broker status m2-qualification-5
 sha256sum "$UTM_ROOT/golden/unix-v7-pdp11/rp0.dsk" \
           "$UTM_ROOT/golden/unix-v7-pdp11/rp1.dsk"
-grep 'm2-qualification-3' "$UTM_ROOT/logs/broker-audit.jsonl"
-cat "$UTM_ROOT/logs/sessions/m2-qualification-3/supervisor.log"
+grep 'm2-qualification-5' "$UTM_ROOT/logs/broker-audit.jsonl"
+cat "$UTM_ROOT/logs/sessions/m2-qualification-5/supervisor.log"
 ```
 
 ## Canonical definition

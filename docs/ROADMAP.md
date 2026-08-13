@@ -54,13 +54,25 @@ AWAITING REAL-HOST QUALIFICATION**.
 
 The third real-host attempt (`m2-qualification-3`) passed V7 boot/readiness,
 attach/detach, memory (`2020544`), `/usr` on `rp3`, four guest syncs, and
-golden-hash preservation, but shutdown timed out after Ctrl-E because the
-child PTY slave was left in canonical mode. A standalone escape byte could be
-held by the line discipline, so no fresh `sim>` was observed. The supervisor
-now configures the slave raw/noncanonical before exec; the confirmed
-Ctrl-E / fresh `sim>` / `quit` / exit handshake remains mandatory. Preserve
-this failed session and workspace as qualification evidence; do not discard or
-reuse them during qualification-4.
+golden-hash preservation, but shutdown timed out after Ctrl-E. The initial
+canonical-buffering diagnosis and parent-side raw-mode correction were
+insufficient.
+
+The fourth attempt (`m2-qualification-4`) again passed normal input, V7 boot,
+`mem = 2020544`, root login, `/usr` on `rp3`, `df`, four guest syncs, detach to
+READY, and golden-hash preservation. Shutdown again timed out after Ctrl-E,
+with no new SIMH output and the emulator left alive. Process evidence showed
+`TT=?`. Pinned Open SIMH source and a production-topology PTY regression prove
+the cause: `start_new_session=True` made SIMH a session leader, but passing an
+already-open slave did not acquire it as the controlling terminal. Moreover,
+SIMH expects POSIX `ISIG` with `VINTR=0x05` to signal the terminal foreground
+process group; parent-side `tty.setraw` disabled `ISIG`, causing SIMH to retain
+the wrong runtime mode. The supervisor now acquires fd 0 as the child session's
+controlling terminal and explicitly makes the child process group foreground,
+while leaving startup termios for SIMH to manage. Preserve all four failed
+sessions and workspaces as evidence. A fresh `m2-qualification-5` must prove the
+unchanged Ctrl-E / fresh `sim>` / `quit` / exit safety handshake before M2 can
+be complete.
 
 ## M3 — 4.3BSD / VAX
 Repeatable 4.3BSD/VAX media contract, install, immutable golden, backend profile,

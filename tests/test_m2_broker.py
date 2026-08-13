@@ -57,15 +57,6 @@ NO_MONITOR_EMULATOR = (
     "os.write(1,b'login:'); data=os.read(0,1024); "
     "os.write(1,b'QUIT_REACHED_GUEST' if b'quit' in data else b'CONTROL_E_ONLY'); time.sleep(30)"
 )
-NO_TTY_CONFIG_EMULATOR = (
-    "import os,signal,time; os.write(1,b'login:'); "
-    "byte=os.read(0,1); os.write(1,b'CTRL_E='+byte+b'\\r\\nsim>'); "
-    "data=b''\n"
-    "while b'quit\\r' not in data: data += os.read(0,1024)\n"
-    "os.write(1,b'QUIT_RECEIVED')"
-)
-
-
 class FakeBackend(Backend):
     def __init__(self, command=CLEAN_EMULATOR, patterns=None):
         self.code = command; self.patterns = patterns or ["login:"]
@@ -202,15 +193,6 @@ class BrokerTests(unittest.TestCase):
                     "monitor prompt observed", "quit sent", "emulator exit observed"]
         positions = [diagnostics.index(event) for event in expected]
         self.assertEqual(positions, sorted(positions))
-
-    def test_raw_transport_delivers_ctrl_e_without_child_tty_configuration(self):
-        """Regression: canonical PTY input would block this standalone byte."""
-        record = self.request(FakeBackend(NO_TTY_CONFIG_EMULATOR)); self.wait_state(record.session_id, {"ready"})
-        Broker(self.root).stop(record.session_id, guest_synced=True)
-        self.wait_state(record.session_id, {"released"})
-        transcript = Path(record.transcript).read_bytes()
-        self.assertIn(b"CTRL_E=\x05", transcript)
-        self.assertIn(b"QUIT_RECEIVED", transcript)
 
     def test_missing_monitor_prompt_never_sends_quit_and_preserves_evidence(self):
         self.write_config(shutdown_timeout=.1)

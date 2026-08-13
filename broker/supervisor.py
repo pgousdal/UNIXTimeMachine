@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import errno
+import fcntl
 import json
 import os
 import pty
@@ -10,7 +11,7 @@ import signal
 import socket
 import subprocess
 import sys
-import tty
+import termios
 import time
 from pathlib import Path
 
@@ -18,6 +19,12 @@ from .config import BrokerConfig
 from .models import SessionState
 from .process import process_start_ticks
 from .store import Store, utc_now
+
+
+def configure_controlling_terminal() -> None:
+    """Complete the session setup after Popen's setsid(), before exec()."""
+    fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+    os.tcsetpgrp(0, os.getpgrp())
 
 
 class Supervisor:
@@ -74,16 +81,13 @@ class Supervisor:
         listener.bind(str(socket_path)); os.chmod(socket_path, 0o660); listener.listen(1)
         listener.setblocking(False)
         master, slave = pty.openpty()
-        # Deliver standalone emulator control bytes immediately.  Canonical
-        # input would hold Ctrl-E until a line delimiter; raw mode preserves
-        # CR/LF bytes and makes the PTY transport byte-for-byte for SIMH.
-        tty.setraw(slave)
         transcript_path = Path(record.transcript)
         transcript_path.parent.mkdir(parents=True, exist_ok=True)
         self.control_log_path = transcript_path.parent / "supervisor.log"
         transcript = transcript_path.open("ab", buffering=0)
         process = subprocess.Popen(spec["command"], stdin=slave, stdout=slave, stderr=slave,
-                                   start_new_session=True, close_fds=True)
+                                   start_new_session=True, close_fds=True,
+                                   preexec_fn=configure_controlling_terminal)
         os.close(slave)
         os.set_blocking(master, False)
         self.transition(SessionState.STARTING, "emulator_start",

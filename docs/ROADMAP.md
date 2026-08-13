@@ -94,7 +94,20 @@ FS-UAE A3000 profile, tape/media procedure, terminal handoff, reset.
 ANSI museum menu and system cards.
 
 ## M6 — Unixish
-MINIX, Coherent, LUnix NG, Plan 9.
+MINIX for Atari ST, FreeMiNT on Atari TT030 or Falcon, Coherent, LUnix NG,
+Plan 9.
 
 ## M7 — Beyond UNIX
 VMS, TOPS-20, ITS, RT-11, RSTS/E, CP/M/MP/M.
+
+## Planned Atari exhibits
+These catalog entries remain **PLANNED** and are not assigned to M3. No
+emulator qualification or bootability is established for them.
+
+| Track | System ID | System | Canonical machine | Media availability |
+|---|---|---|---|---|
+| UNIX | `atari-system-v-tt030` | Atari System V / Atari UNIX | Atari TT030 / Motorola 68030 | Unverified |
+| UNIX | `netbsd-atari` | NetBSD/atari | Atari TT030 or Falcon | Not established |
+| UNIX | `linux-m68k-atari` | Linux/m68k on Atari | Atari TT030 or Falcon | Not established |
+| Unixish | `freemint-atari` | FreeMiNT | Atari TT030 or Falcon | Not established |
+| Unixish | `minix-atari-st` | MINIX for Atari ST | Atari ST | Not established |

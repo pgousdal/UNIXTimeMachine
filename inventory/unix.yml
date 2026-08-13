@@ -9,6 +9,19 @@ planned:
   - unix-v6-pdp11
   - 211bsd-pdp11
   - system-v
+  - id: atari-system-v-tt030
+    name: Atari System V / Atari UNIX
+    status: PLANNED
+    canonical_machine: Atari TT030 / Motorola 68030
+    media_availability: unverified
+  - id: netbsd-atari
+    name: NetBSD/atari
+    status: PLANNED
+    canonical_machine: Atari TT030 or Falcon
+  - id: linux-m68k-atari
+    name: Linux/m68k on Atari
+    status: PLANNED
+    canonical_machine: Atari TT030 or Falcon
   - xenix
   - sunos4
   - ultrix

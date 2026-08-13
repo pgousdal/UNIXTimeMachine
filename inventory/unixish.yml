@@ -3,7 +3,14 @@ title: Unixish
 description: UNIX-like clones, research systems, descendants and inspired environments.
 systems: []
 planned:
-  - minix
+  - id: freemint-atari
+    name: FreeMiNT
+    status: PLANNED
+    canonical_machine: Atari TT030 or Falcon
+  - id: minix-atari-st
+    name: MINIX for Atari ST
+    status: PLANNED
+    canonical_machine: Atari ST
   - coherent
   - lunix-ng-c64
   - plan9

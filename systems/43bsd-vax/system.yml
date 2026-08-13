@@ -37,6 +37,7 @@ media:
       filenames: [43bsd-miniroot.dsk, miniroot]
       required: true
       install_token: "@INSTALL_MINIROOT@"
+      bootstrap_copy_filename: bootstrap-miniroot.dsk
       purpose: Operator-created raw RA81 image containing the stock 4.3BSD miniroot
     - logical_name: standalone-boot
       filenames: [boot42]

@@ -315,10 +315,31 @@ def prepare_install(system_id: str, staging: Path, host_root: Path,
             "@INSTALL_BOOTSTRAP_CONSOLE_LOG@": str((staging / "install-bootstrap-console.log").resolve()),
             "@INSTALL_RUNTIME_CONSOLE_LOG@": str((staging / "install-runtime-console.log").resolve()),
         }
+        bootstrap_copies = {}
         for item in media["items"]:
             if item.get("install_token"):
                 artifact = next(path for path in (media_dir / name for name in item["filenames"]) if path.is_file())
-                replacements[item["install_token"]] = str(artifact.resolve())
+                bootstrap_filename = item.get("bootstrap_copy_filename")
+                if bootstrap_filename:
+                    source_hash = sha256(artifact)
+                    bootstrap = staging / bootstrap_filename
+                    method = copy_exclusive(artifact, bootstrap)
+                    bootstrap.chmod(0o640)
+                    output_hash = sha256(bootstrap)
+                    if sha256(artifact) != source_hash:
+                        raise UTMError(
+                            "preservation invariant violated: bootstrap source media changed during copy"
+                        )
+                    bootstrap_copies[item["logical_name"]] = {
+                        "copy_method": method,
+                        "filename": bootstrap_filename,
+                        "output_sha256": output_hash,
+                        "source_path": str(artifact.resolve()),
+                        "source_sha256": source_hash,
+                    }
+                    replacements[item["install_token"]] = str(bootstrap.resolve())
+                else:
+                    replacements[item["install_token"]] = str(artifact.resolve())
         for disk in prepared_disks(manifest):
             replacements[f"@STAGING_{disk['unit']}@"] = str((staging / disk["golden_filename"]).resolve())
         for value in replacements.values():
@@ -334,6 +355,10 @@ def prepare_install(system_id: str, staging: Path, host_root: Path,
             output = staging / output_name
             output.write_text(config, encoding="utf-8")
             outputs.append(output)
+        atomic_json(staging / "install.json", {
+            "bootstrap_copies": bootstrap_copies,
+            "system_id": system_id,
+        })
         return outputs[0], outputs[1]
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)

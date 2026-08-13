@@ -25,6 +25,9 @@ def main():
                 if item.get("size") is not None and (not isinstance(item["size"],int) or item["size"] < 0): raise ValueError(f"{path}: bad media size")
                 if item.get("sha256") is not None and not re.fullmatch(r"[0-9a-fA-F]{64}",item["sha256"]): raise ValueError(f"{path}: bad sha256")
                 if item.get("sha1") is not None and not re.fullmatch(r"[0-9a-fA-F]{40}",item["sha1"]): raise ValueError(f"{path}: bad sha1")
+                bootstrap_copy=item.get("bootstrap_copy_filename")
+                if bootstrap_copy is not None and (not isinstance(bootstrap_copy,str) or not bootstrap_copy or "/" in bootstrap_copy or "\\" in bootstrap_copy or bootstrap_copy in (".","..")): raise ValueError(f"{path}: unsafe bootstrap copy filename")
+                if bootstrap_copy is not None and not item.get("install_token"): raise ValueError(f"{path}: bootstrap copy requires install_token")
             prepared=data.get("prepared")
             disks=prepared.get("disks",[]) if prepared is not None else []
             if prepared is not None and (not isinstance(disks,list) or not disks): raise ValueError(f"{path}: prepared.disks must be a non-empty list")

@@ -3,6 +3,35 @@
 State: **IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION**. Nothing below is a
 claim of successful operation on the Debian 13 qualification host.
 
+## First M3 real-host qualification finding
+
+The first Debian 13 run with pinned Open SIMH v3.12-3 reached the 4.3BSD kernel,
+identified `ra0`, `ra1`, and `ts0`, and changed root to `ra0a`. It then failed
+with hard errors on `ra0a`/`ra0b` and `panic: hard IO err in swap`. SIMH had
+reported `RQ: unit is read only` when the generated bootstrap configuration
+attached the canonical, deliberately mode-0440 miniroot directly as `rq0`.
+The miniroot environment uses `ra0`, including swap, so read-only attachment is
+not a valid installation transport.
+
+`install prepare` now keeps the preserved object unchanged and creates an
+operator-owned, mode-0640 `bootstrap-miniroot.dsk` in the new staging directory.
+It uses an exclusive copy-on-write reflink when the filesystem supports one and
+otherwise an exclusive full copy. `install.json` records the method, canonical
+source path and SHA-256, and initial copy SHA-256. The bootstrap configuration
+attaches this scratch file as `rq0`; `rq1` remains the new `rq0.dsk` installation
+target. Existing staging directories are refused, and only manifest-declared
+prepared disks are eligible for golden import, so the bootstrap scratch image
+is never published.
+
+RA81-sized pre-expansion is not required. Inspection and reproduction used the
+repository-pinned source commit and an exactly 2,099,200-byte writable file.
+Open SIMH attached it as a write-enabled RA81 while retaining its original host
+size. In v3.12-3, RQ capacity comes from the selected RA81 geometry (891,072
+512-byte blocks), reads beyond host EOF are zero-filled, and ordinary writes
+seek/write the backing file, extending it only as needed. Preparation therefore
+does not inflate or sparsely extend the copy; its initial SHA-256 stays equal to
+the preserved source SHA-256.
+
 ## Historical profile
 
 The exhibit uses Open SIMH `vax780`, an 8 MiB VAX-11/780, a UDA50 with one
@@ -130,6 +159,21 @@ python3 scripts/utm.py install prepare 43bsd-vax /srv/unix-time-machine/staging/
 /opt/unix-time-machine/simh/v3.12-3/vax780 /srv/unix-time-machine/staging/43bsd-vax-QUAL/install-bootstrap.ini
 ```
 
+Before preparation, the qualification staging path must not exist. Afterwards
+its installation-relevant layout is:
+
+```text
+43bsd-vax-QUAL/
+├── bootstrap-miniroot.dsk       # mutable rq0 bootstrap scratch
+├── install-bootstrap.ini        # rq0=scratch, rq1=rq0.dsk
+├── install-runtime.ini          # rq0=rq0.dsk
+└── install.json                 # bootstrap copy/hash provenance
+```
+
+SIMH creates `rq0.dsk` as the new target when it processes the bootstrap
+configuration. Console log files appear when their corresponding configuration
+runs. The canonical media directory and its ownership/modes are not changed.
+
 The `chmod` command intentionally fails if `boot42` was not supplied, stopping
 the sequence before verification. If `/tmp/43bsd-vax-media` exists from an
 earlier attempt, inspect and move it aside; the preparation command will not
@@ -249,6 +293,27 @@ Record operator, UTC times, host release, repository commit, and every command.
     media report, golden metadata/hashes, and qualification notes outside Git.
 
 Only after reviewing that evidence may ROADMAP state COMPLETE.
+
+For the next fresh qualification attempt, use this exact new staging identity
+(after confirming it does not exist):
+
+```sh
+test ! -e /srv/unix-time-machine/staging/install-43bsd-vax-2
+python3 scripts/utm.py media verify 43bsd-vax
+python3 scripts/utm.py install prepare 43bsd-vax /srv/unix-time-machine/staging/install-43bsd-vax-2 --allow-unpinned
+sha256sum /srv/unix-time-machine/media/43bsd-vax/43bsd-miniroot.dsk /srv/unix-time-machine/staging/install-43bsd-vax-2/bootstrap-miniroot.dsk
+stat -c '%U:%G %a %s %n' /srv/unix-time-machine/media/43bsd-vax/43bsd-miniroot.dsk /srv/unix-time-machine/staging/install-43bsd-vax-2/bootstrap-miniroot.dsk
+python3 -m json.tool /srv/unix-time-machine/staging/install-43bsd-vax-2/install.json
+/opt/unix-time-machine/simh/v3.12-3/vax780 /srv/unix-time-machine/staging/install-43bsd-vax-2/install-bootstrap.ini
+```
+
+Continue with the two documented guest phases, using
+`install-runtime.ini` from the same staging directory. After the runtime boot,
+filesystem checks, and clean shutdown succeed, publish only the declared target:
+
+```sh
+sudo python3 scripts/utm.py golden import 43bsd-vax /srv/unix-time-machine/staging/install-43bsd-vax-2
+```
 
 ## Explicit unresolved assumptions
 

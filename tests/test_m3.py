@@ -1,5 +1,7 @@
 import tempfile
 import unittest
+import json
+import os
 from pathlib import Path
 from unittest import mock
 
@@ -71,7 +73,10 @@ class M3Tests(unittest.TestCase):
         self.assertEqual(tape.status, "FAIL")
 
     def test_install_requires_explicit_unpinned_boundary_and_renders_all_artifacts(self):
-        self.supply_media()
+        media = self.supply_media()
+        canonical = media / "43bsd-miniroot.dsk"
+        canonical.chmod(0o440)
+        source_hash = sha256(canonical)
         staging = self.root / "staging" / "fresh"
         with self.assertRaisesRegex(UTMError, "allow-unpinned"):
             prepare_install(SYSTEM, staging, self.root)
@@ -82,6 +87,23 @@ class M3Tests(unittest.TestCase):
             self.assertIn("set xu disabled", text)
         self.assertIn("attach rq1", bootstrap.read_text())
         self.assertIn("attach rq0", runtime.read_text())
+        bootstrap_copy = staging / "bootstrap-miniroot.dsk"
+        bootstrap_text = bootstrap.read_text()
+        self.assertIn(f"attach rq0 {bootstrap_copy}", bootstrap_text)
+        self.assertNotIn(f"attach rq0 {canonical}", bootstrap_text)
+        self.assertTrue(os.access(bootstrap_copy, os.W_OK))
+        self.assertEqual(bootstrap_copy.stat().st_mode & 0o777, 0o640)
+        self.assertEqual(bootstrap_copy.stat().st_size, canonical.stat().st_size)
+        self.assertEqual(sha256(canonical), source_hash)
+        self.assertEqual(canonical.stat().st_mode & 0o777, 0o440)
+        metadata = json.loads((staging / "install.json").read_text())
+        provenance = metadata["bootstrap_copies"]["miniroot-disk"]
+        self.assertIn(provenance["copy_method"], {"reflink", "full-copy"})
+        self.assertEqual(provenance["source_path"], str(canonical))
+        self.assertEqual(provenance["source_sha256"], source_hash)
+        self.assertEqual(provenance["output_sha256"], sha256(bootstrap_copy))
+        with self.assertRaisesRegex(UTMError, "overwrite"):
+            prepare_install(SYSTEM, staging, self.root, allow_unpinned=True)
 
     def test_install_rejects_unsafe_or_protected_staging(self):
         self.supply_media()
@@ -109,6 +131,18 @@ class M3Tests(unittest.TestCase):
         with self.assertRaisesRegex(UTMError, "incomplete"):
             import_golden(SYSTEM, staging, self.root)
         self.assertFalse((self.root / "golden" / SYSTEM).exists())
+
+    @mock.patch("scripts.utmlib.set_golden_access")
+    @mock.patch("scripts.utmlib.golden_group_id", return_value=123)
+    def test_golden_import_ignores_bootstrap_scratch_and_contains_only_expected_disk(self,
+                                                                                   _gid, _access):
+        staging = self.root / "staging"; staging.mkdir()
+        (staging / "rq0.dsk").write_bytes(b"installed")
+        (staging / "bootstrap-miniroot.dsk").write_bytes(b"scratch")
+        (staging / "install.json").write_text("{}")
+        destination, _ = import_golden(SYSTEM, staging, self.root)
+        self.assertEqual({path.name for path in destination.iterdir()},
+                         {"rq0.dsk", "metadata.json"})
 
     def test_vax_runtime_is_session_local_and_networkless(self):
         self.supply_media()

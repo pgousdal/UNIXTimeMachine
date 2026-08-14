@@ -118,13 +118,15 @@ and a backend-selected console/shutdown capability boundary. M4.1 is
 3.1.66 build passed the non-AMIX A3000/RDB/tape/serial substrate qualification
 with run-scoped evidence and no new TCP listener. Bidirectional guest serial
 traffic remains deferred until AMIX exists. M4.1 implements no FS-UAE backend,
-installation, golden, or AMIX session. M4.2 is **BASE INSTALL QUALIFIED /
-AWAITING GOLDEN PUBLICATION**: the real installation passed first boot, root
-login, filesystem/swap checks, clean shutdown, and installed-HDF structure and
-checksum checks. The generic golden-import contract is implemented; actual
-publication and verification remain explicit operator actions. Later gates
-follow M4.2: M4.3 patched runtime/serial/halt qualification, M4.4 broker
-integration, and M4.5 complete real-host qualification. See
+installation, golden, or AMIX session. M4.2 is **COMPLETE**: the real
+installation passed first boot, root login, read/write-root and active-swap
+checks, clean shutdown, installed-HDF structure/checksum checks, generic golden
+publication, and byte-identical pristine session preparation. M4.3 is
+**IMPLEMENTED / REAL-HOST SESSION LAUNCH PENDING**: the graphical FS-UAE
+backend renders the qualified A3000 profile from the disposable session and
+protected operator ROM/key, but has not yet booted the real session through
+`utm.py system start`. Serial/getty readiness, patch, broker, and full
+real-host qualification remain later gates. See
 `systems/amix-a3000/README.md`.
 
 ## M5 — BBS door

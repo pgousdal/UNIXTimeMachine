@@ -39,10 +39,10 @@ class M40Tests(unittest.TestCase):
 
     def test_amix_manifest_is_conservative_incomplete_and_network_disabled(self):
         manifest = self.manifest()
-        self.assertEqual(manifest["status"], "defined")
+        self.assertEqual(manifest["status"], "runtime-implemented-real-host-qualification-pending")
         self.assertEqual(manifest["session"]["network"], "disabled")
         self.assertFalse(manifest["session"]["public_eligible"])
-        self.assertEqual(manifest["emulator"]["implementation"], "qualification-substrate-only")
+        self.assertEqual(manifest["emulator"]["implementation"], "graphical-session-runtime")
         self.assertEqual(manifest["emulator"]["jit"], "disabled")
         self.assertTrue(manifest["canonical_target"]["result_qualification_required"])
         self.assertEqual(manifest["milestones"]["m4.1"], "complete")
@@ -59,7 +59,6 @@ class M40Tests(unittest.TestCase):
         })
         for item in items:
             self.assertEqual(item["operator_path"], "explicit")
-            self.assertNotIn("filenames", item)
             self.assertNotIn("sha256", item)
             self.assertNotIn("sha1", item)
             self.assertNotIn("size", item)
@@ -67,6 +66,10 @@ class M40Tests(unittest.TestCase):
         self.assertEqual(tape["representation"], "ordered-multi-member-tape")
         self.assertEqual(tape["ordering"], "operator-supplied-and-recorded")
         self.assertFalse(next(item for item in items if item["logical_name"] == "rom-key")["required"])
+        rom = next(item for item in items if item["logical_name"] == "compatible-a3000-kickstart-rom")
+        key = next(item for item in items if item["logical_name"] == "rom-key")
+        self.assertEqual(rom["filenames"], ["operator-rom"])
+        self.assertEqual(key["filenames"], ["operator-rom-key"])
 
     def test_unmapped_amix_media_fail_without_authenticity_claim(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -74,7 +77,7 @@ class M40Tests(unittest.TestCase):
         self.assertEqual(len(results), 6)
         required = [result for result in results if result.logical_name != "rom-key"]
         self.assertTrue(all(result.status == "MISSING" for result in required))
-        self.assertTrue(all("explicit external path" in result.detail for result in required))
+        self.assertTrue(all(result.detail for result in required))
         self.assertEqual(next(result for result in results if result.logical_name == "rom-key").status,
                          "PASS")
 

@@ -264,31 +264,76 @@ def render_runtime(system_id: str, session_id: str, host_root: Path) -> Path:
     manifest_path, manifest = system_manifest(safe_id(system_id, "system id"))
     safe_id(session_id, "session id")
     workspace = host_root / "sessions" / system_id / session_id
+    if not workspace.is_dir():
+        raise UTMError(f"session does not exist: {workspace}; run session prepare first")
     disks = prepared_disks(manifest)
-    template = manifest_path.parent / manifest["emulator"]["configuration"]
+    emulator = manifest.get("emulator")
+    if not isinstance(emulator, dict) or not isinstance(emulator.get("configuration"), str):
+        raise UTMError(f"manifest for {system_id} is missing required emulator.configuration")
+    template = manifest_path.parent / emulator["configuration"]
     config = template.read_text(encoding="utf-8")
     replacements = {}
+    replacements["@SESSION_LOG_DIR@"] = str((workspace / "fs-uae-logs").resolve())
+
+    def runtime_path(path: Path) -> str:
+        value = str(path.resolve())
+        if any(char in value for char in "\n\r\t ;\""):
+            raise UTMError(f"runtime path contains unsafe characters: {value}")
+        return value
+
     for disk in disks:
         path = workspace / disk["session_filename"]
         if not path.is_file():
             raise UTMError(f"incomplete session disk set; missing: {path}")
-        replacements[disk["runtime_token"]] = str(path.resolve())
+        replacements[disk["runtime_token"]] = runtime_path(path)
     media = manifest.get("media", {})
     media_dir = host_root / "media" / media.get("directory", system_id)
+    runtime_artifacts = {}
     for item in media.get("items", []):
         if item.get("runtime_token"):
-            candidates = [media_dir / name for name in item["filenames"]]
+            candidates = [media_dir / name for name in item.get("filenames", [])]
             artifact = next((path for path in candidates if path.is_file()), None)
             if artifact is None:
                 raise UTMError(f"missing runtime support artifact: {item['logical_name']}")
-            replacements[item["runtime_token"]] = str(artifact.resolve())
+            replacements[item["runtime_token"]] = runtime_path(artifact)
+            runtime_artifacts[item["logical_name"]] = artifact
+    for item in media.get("items", []):
+        option_token = item.get("runtime_option_token")
+        if not option_token:
+            continue
+        candidates = [media_dir / name for name in item.get("filenames", [])]
+        artifact = next((path for path in candidates if path.is_file()), None)
+        condition = item.get("required_when_runtime_artifact_prefix")
+        required = False
+        if condition:
+            source = runtime_artifacts.get(condition.get("logical_name"))
+            prefix = condition.get("ascii")
+            if source is None or not isinstance(prefix, str):
+                raise UTMError(f"invalid conditional runtime artifact contract: {item['logical_name']}")
+            with source.open("rb") as stream:
+                required = stream.read(len(prefix)) == prefix.encode("ascii")
+        if artifact is None:
+            if required:
+                raise UTMError(
+                    f"missing required runtime support artifact: {item['logical_name']} "
+                    f"(required by {condition['logical_name']} representation)"
+                )
+            replacements[option_token] = ""
+        else:
+            runtime_artifacts[item["logical_name"]] = artifact
+            option = item.get("runtime_option")
+            if not isinstance(option, str) or "{path}" not in option:
+                raise UTMError(f"invalid runtime option contract: {item['logical_name']}")
+            replacements[option_token] = option.format(path=runtime_path(artifact))
     for token, value in replacements.items():
-        if any(char in value for char in "\n\r\t ;\""):
-            raise UTMError(f"runtime path contains characters unsafe for SIMH: {value}")
+        if any(char in value for char in "\n\r\t\""):
+            raise UTMError(f"runtime replacement contains unsafe characters: {value}")
+        if " " in value and " = " not in value:
+            raise UTMError(f"runtime path contains unsafe whitespace: {value}")
         config = config.replace(token, value)
     if "@" in config:
-        raise UTMError("unresolved token in SIMH runtime configuration")
-    output = workspace / "runtime.ini"
+        raise UTMError("unresolved token in runtime configuration")
+    output = workspace / emulator.get("rendered_configuration", "runtime.ini")
     temporary = output.with_name(f".{output.name}.{os.getpid()}.tmp")
     temporary.write_text(config, encoding="utf-8")
     os.replace(temporary, output)
@@ -373,12 +418,16 @@ def prepare_install(system_id: str, staging: Path, host_root: Path,
 
 
 def find_emulator(manifest: dict) -> str:
-    configured = manifest["emulator"].get("executable")
+    emulator = manifest.get("emulator")
+    if not isinstance(emulator, dict):
+        raise UTMError("manifest is missing required emulator configuration")
+    configured = emulator.get("executable")
+    label = "SIMH" if emulator.get("family") == "simh" else "emulator"
     if not configured or not Path(configured).is_absolute():
-        raise UTMError("SIMH manifest must select an absolute executable path")
+        raise UTMError(f"{label} manifest must select an absolute executable path")
     path = Path(configured)
     if not path.is_file() or not os.access(path, os.X_OK):
-        raise UTMError(f"missing or non-executable SIMH executable: {path}")
+        raise UTMError(f"missing or non-executable {label} executable: {path}")
     return str(path)
 
 

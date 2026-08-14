@@ -23,6 +23,8 @@ emulator:
   family: fs-uae
   profile: a3000
   executable: /usr/bin/fs-uae
+  configuration: runtime.fs-uae.in
+  rendered_configuration: runtime.fs-uae
   debian_package:
     suite: trixie
     component: main
@@ -30,9 +32,9 @@ emulator:
     name: fs-uae
     version: 3.1.66-2+b1
     deb_sha256: 5f703e361d242a99da46454a0b21aafed6010e4153682f1aeed9f59e5cd3d9e4
-  implementation: qualification-substrate-only
+  implementation: graphical-session-runtime
   jit: disabled
-  rom: operator-supplied compatible A3000 Kickstart
+  rom: operator-supplied compatible A3000 Kickstart 3.1
 terminal:
   planned_runtime_transport: local external serial PTY
   qualification_required: true
@@ -65,12 +67,20 @@ media:
     - logical_name: compatible-a3000-kickstart-rom
       required: true
       operator_path: explicit
+      filenames: [operator-rom]
+      runtime_token: "@ROM@"
       representation: rom-image
       attachment: read-only-or-private-staging-copy
     - logical_name: rom-key
       required: false
-      required_when: supplied-rom-representation-requires-key
       operator_path: explicit
+      required_when: supplied-rom-representation-requires-key
+      filenames: [operator-rom-key]
+      runtime_option_token: "@ROM_KEY_OPTION@"
+      runtime_option: "kickstart_key_file = {path}"
+      required_when_runtime_artifact_prefix:
+        logical_name: compatible-a3000-kickstart-rom
+        ascii: AMIROMTYPE1
       representation: rom-key
       attachment: read-only-or-private-staging-copy
 canonical_target:
@@ -96,8 +106,12 @@ session:
   public_eligible: false
   reset_strategy: copy-on-session
   network: disabled
-status: defined
+readiness:
+  supported: false
+  reason: graphical AMIX login remains human-verified until serial/getty qualification
+status: runtime-implemented-real-host-qualification-pending
 milestones:
   m4.0: complete
   m4.1: complete
-  m4.2: base-install-qualified-awaiting-golden-publication
+  m4.2: complete
+  m4.3: implemented-real-host-session-launch-pending

@@ -2,11 +2,11 @@
 
 M4 is incomplete. M4.0 defines historical/media and backend architecture.
 M4.1 is **COMPLETE**: Debian 13 FS-UAE provisioning and the non-AMIX hardware
-substrate passed real-host qualification. The M4.2 real-host base installation
-has now passed first boot, root login, filesystem/swap verification, and clean
-System V shutdown. The golden-import contract is implemented, but no AMIX
-golden has been published and there is no FS-UAE session backend or qualified
-AMIX broker console path in this repository.
+substrate passed real-host qualification. M4.2 is **COMPLETE**: installation,
+first boot, root/filesystem/swap checks, clean shutdown, golden publication,
+and a pristine disposable-session copy were qualified. M4.3 now implements the
+graphical FS-UAE session runtime; real launch through `utm.py system start`
+remains pending. There is not yet a qualified AMIX serial/getty broker console.
 
 ## Evidence classification
 
@@ -87,20 +87,21 @@ system and real-host evidence.
   output, and executable hash. The launcher and network helpers are absent.
   Real-host qualification confirmed A3000 startup, MMU/FPU, memory, RDB, tape,
   ROM loading, local serial PTY attachment, controlled exit, and local display.
-- **M4.2 — BASE INSTALL QUALIFIED / AWAITING GOLDEN PUBLICATION:** observed
+- **M4.2 — COMPLETE:** observed
   media inventory, preservation-safe staging, and the generic golden-import
   contract are implemented. A real installation passed hard-disk first boot,
   root login, filesystem/swap verification, and clean System V shutdown. The
   installed HDF also passed RDB/PART structure and bootblock checksum checks.
-  Actual golden publication and verification remain explicit operator actions;
-  M4.2 is not complete until both have occurred.
-- **M4.3:** official patch procedure and resulting identity; exact serial
-  device, getty/inittab, baud and privileged-login behavior; exact clean halt
-  command/marker; FS-UAE behavior after halt.
-- **M4.4:** real FS-UAE backend, external serial transport, readiness,
-  attach/detach, shutdown driver, and preservation-safe failures.
-- **M4.5:** complete real-host qualification, including two fresh disposable
-  sessions and unchanged golden evidence.
+  The installed HDF was imported through the generic mechanism, the immutable
+  golden verified byte-identical, and a pristine disposable session verified
+  byte-identical before first launch.
+- **M4.3 — IMPLEMENTED / REAL-HOST SESSION LAUNCH PENDING:** generic runtime
+  rendering now selects the writable disposable RDB, protected operator ROM/key,
+  and qualified graphical FS-UAE hardware profile. It does not claim guest
+  readiness from emulator process state.
+- **Later gates:** official patch identity; exact serial device, getty/inittab,
+  baud and privileged-login behavior; broker attach/detach, shutdown driver,
+  halt marker/behavior, readiness, and full real-host qualification.
 
 ## M4.1 source-backed substrate
 
@@ -361,12 +362,21 @@ DISPLAY=:99 /usr/bin/fs-uae \
 ```
 
 The real-host run confirmed no floppy or tape was needed for the hard-disk
-boot, reached base AMIX 2.1 root login, verified filesystems and swap, and
-completed a clean System V shutdown. Kickstart 2.04 for A3000 produced a white
-screen boot failure under the tested FS-UAE UAE core. A3000 Kickstart 3.1 then
-successfully booted the same verified RDB/HDF. Independent checks of that HDF
-passed its RDB/PART structures and bootblock checksums. These observations do
-not establish the later patch, serial-console, or broker runtime contracts.
+boot, completed installation and first boot, reached root login, found `/`
+mounted read/write and swap active on `/dev/dsk/c6d0s2`, and completed a clean
+`shutdown -y -g0`. Independent checks passed the HDF's RDB, PART blocks, UNIX
+bootblock checksums, and related structures. The installed HDF was imported by
+the generic golden mechanism and verified byte-identical to staging; a newly
+prepared session was byte-identical to golden before launch. The pristine
+SHA-256 was `48d36859b1b69cf0cd56f6b846b5a4369575f3350225a60451c9d827865db918`.
+
+Amiga Forever A3000 Kickstart 2.04 produced a persistent white-screen boot
+failure under the tested FS-UAE UAE core. A3000 Kickstart 3.1 successfully
+booted the exact same verified RDB/HDF. The currently qualified runtime thus
+requires a compatible operator-supplied A3000 Kickstart 3.1 representation.
+This is an emulator compatibility result, not a claim that AMIX cannot run
+with Kickstart 2.04 on real hardware. These observations do not establish the
+later patch, serial-console, or broker runtime contracts.
 
 Before and after each emulator run, compare listening TCP sockets. After the
 installation, re-hash every canonical source listed in the inventory and record
@@ -386,8 +396,31 @@ sudo python3 scripts/utm.py golden import amix-a3000 \
   /srv/unix-time-machine/staging/amix-m42-base-install
 ```
 
-M4.2 must not be marked complete until the qualified real staging HDF has been
-imported and the resulting golden bytes, metadata, ownership, modes, and hash
-have been verified. The observed installed-output hash is qualification
-evidence, not versioned source-media identity, and is therefore not pinned in
-the manifest.
+That explicit publication and verification has now completed. The observed
+installed-output hash is qualification evidence, not versioned source-media
+identity, and is therefore not pinned in the manifest.
+
+## M4.3 graphical runtime backend
+
+`runtime.fs-uae.in` is the canonical repository-owned runtime template. The
+generic renderer substitutes only the disposable session's `amix-system.hdf`;
+it never attaches the golden. It selects A3000, 68030 CPU/MMU, 68882 FPU,
+2 MiB Chip RAM, 16 MiB motherboard RAM, no JIT, no networking, and a writable
+RDB hardfile using the qualified `scsi6` controller selector. The FS-UAE
+front-end diagnostic that `scsi6` is not known is retained: the tested core
+then initialized A3000 mainboard SCSI and attached HD unit 6 successfully.
+
+Runtime ROM material remains under protected operator media. The established
+deployment names are `operator-rom` and, when required, `operator-rom-key`.
+An `AMIROMTYPE1` representation requires the key before launch; an unencrypted
+representation may omit it. Rendered configuration contains paths, never ROM
+or key bytes. Display selection remains an operator host concern and the
+template does not prescribe Xvfb or `DISPLAY`.
+
+`system start` retains the existing emulator lookup, deterministic renderer,
+PTY process supervision, transcript, state file, and argv-list execution. In
+this graphical phase the PTY captures emulator diagnostics, not an AMIX guest
+console. `system status` can report emulator process state, while `system
+ready` returns `HUMAN_REQUIRED`; root login remains human-verified until the
+serial/getty milestone. M4.3 must not be called qualified until a real
+disposable session boots through `utm.py system start`.

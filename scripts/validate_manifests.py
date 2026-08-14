@@ -13,6 +13,10 @@ def main():
             if data["track"] not in VALID_TRACKS: raise ValueError(f"{path}: bad track")
             if not isinstance(data["year"], int): raise ValueError(f"{path}: year must be int")
             if not data["emulator"].get("family"): raise ValueError(f"{path}: emulator.family required")
+            configuration=data["emulator"].get("configuration")
+            if configuration is not None:
+                if not isinstance(configuration,str) or not configuration or "/" in configuration or "\\" in configuration: raise ValueError(f"{path}: unsafe emulator.configuration")
+                if not (path.parent/configuration).is_file(): raise ValueError(f"{path}: emulator.configuration does not exist")
             if not isinstance(data["session"].get("public_eligible"), bool): raise ValueError(f"{path}: public_eligible bool required")
             media=data.get("media",{})
             if media.get("policy") != "external": raise ValueError(f"{path}: media.policy must be external")
@@ -31,6 +35,14 @@ def main():
                 bootstrap_copy=item.get("bootstrap_copy_filename")
                 if bootstrap_copy is not None and (not isinstance(bootstrap_copy,str) or not bootstrap_copy or "/" in bootstrap_copy or "\\" in bootstrap_copy or bootstrap_copy in (".","..")): raise ValueError(f"{path}: unsafe bootstrap copy filename")
                 if bootstrap_copy is not None and not item.get("install_token"): raise ValueError(f"{path}: bootstrap copy requires install_token")
+                runtime_option_token=item.get("runtime_option_token")
+                if runtime_option_token is not None:
+                    if not re.fullmatch(r"@[A-Z0-9_]+@",runtime_option_token): raise ValueError(f"{path}: bad runtime option token")
+                    if not isinstance(item.get("runtime_option"),str) or item["runtime_option"].count("{path}") != 1: raise ValueError(f"{path}: bad runtime option")
+                condition=item.get("required_when_runtime_artifact_prefix")
+                if condition is not None:
+                    if not runtime_option_token: raise ValueError(f"{path}: conditional runtime artifact requires runtime_option_token")
+                    if not isinstance(condition,dict) or not isinstance(condition.get("logical_name"),str) or not isinstance(condition.get("ascii"),str) or not condition["ascii"] or not condition["ascii"].isascii(): raise ValueError(f"{path}: bad conditional runtime artifact prefix")
             prepared=data.get("prepared")
             disks=prepared.get("disks",[]) if prepared is not None else []
             if prepared is not None and (not isinstance(disks,list) or not disks): raise ValueError(f"{path}: prepared.disks must be a non-empty list")

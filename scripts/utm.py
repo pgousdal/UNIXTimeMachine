@@ -207,8 +207,10 @@ def cmd_system_start(args):
         nonlocal child_pid
         child_pid = pid
         atomic_json(state, {**runtime, "pid": pid})
-        print(f"RUNNING session={session_id} pid={pid}; local console attached (SIMH escape is Ctrl-E)",
-              flush=True)
+        family = manifest.get("emulator", {}).get("family", "emulator")
+        detail = ("local console attached (SIMH escape is Ctrl-E)" if family == "simh"
+                  else "emulator running; guest login readiness requires graphical human verification")
+        print(f"RUNNING session={session_id} pid={pid}; {detail}", flush=True)
     try:
         exit_code = interactive_console(
             [emulator, str(config)],
@@ -231,18 +233,27 @@ def cmd_system_stop(args):
     if not pid_alive(pid):
         raise UTMError(f"recorded process {pid} is not running")
     if not args.guest_synced:
-        raise UTMError("refusing abrupt stop; sync the UNIX guest, halt to SIMH with Ctrl-E, and quit; use --guest-synced only after guest filesystems are synced")
+        raise UTMError("refusing abrupt stop; cleanly sync and halt the UNIX guest first; use --guest-synced only after guest filesystems are synced")
     if not stop_process(pid, args.timeout):
-        raise UTMError(f"SIMH did not stop within {args.timeout}s; inspect it manually (no forced kill was sent)")
-    print(f"PASS    stopped SIMH pid {pid}")
+        raise UTMError(f"emulator did not stop within {args.timeout}s; inspect it manually (no forced kill was sent)")
+    print(f"PASS    stopped emulator pid {pid}")
     return 0
 
 
 def cmd_system_ready(args):
     session_id = selected_session(args)
     _, manifest = system_manifest(args.system_id)
+    readiness_contract = manifest.get("readiness")
+    if not isinstance(readiness_contract, dict) or readiness_contract.get("supported") is False:
+        reason = ((readiness_contract or {}).get("reason") or
+                  "no guest-visible readiness probe is defined")
+        print(f"HUMAN_REQUIRED session={session_id}: {reason}")
+        return 1
     log = root_path(args) / "sessions" / args.system_id / session_id / "console.log"
-    status, tail = readiness(log, manifest["readiness"]["patterns"], args.timeout)
+    patterns = readiness_contract.get("patterns")
+    if not isinstance(patterns, list) or not patterns:
+        raise UTMError(f"manifest for {args.system_id} has no readiness.patterns")
+    status, tail = readiness(log, patterns, args.timeout)
     print(f"{status} session={session_id} console={log}")
     if status != "PASS":
         print("Expected login marker was not observed within the bounded wait; inspect console.log and confirm on the local console.")

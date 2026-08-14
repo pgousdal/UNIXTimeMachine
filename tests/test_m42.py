@@ -123,6 +123,7 @@ class M42Tests(unittest.TestCase):
             "amix-a3000", "synthetic-amix-session", self.root)
         session_disk = workspace / "amix-system.hdf"
         self.assertTrue(methods)
+        self.assertEqual(methods, ["full-copy"])
         self.assertEqual(session_disk.read_bytes(), source.read_bytes())
         session_disk.write_bytes(b"session changed")
         self.assertEqual(sha256(golden / "amix-system.hdf"), before)

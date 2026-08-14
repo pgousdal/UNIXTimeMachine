@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from scripts import utm, utmlib
+from scripts.amix_m42 import config_text
 from scripts.manifestlib import system_manifest
 
 
@@ -27,8 +28,8 @@ class M43RuntimeTests(unittest.TestCase):
         (self.session / "amix-system.hdf").write_bytes(b"synthetic session disk")
         self.media = self.root / "media" / SYSTEM
         self.media.mkdir(parents=True)
-        (self.media / "operator-rom").write_bytes(b"AMIROMTYPE1synthetic-rom")
-        (self.media / "operator-rom-key").write_bytes(b"synthetic-key")
+        (self.media / "amiga-os-310-a3000.rom").write_bytes(b"AMIROMTYPE1synthetic-rom")
+        (self.media / "rom.key").write_bytes(b"synthetic-key")
 
     def tearDown(self):
         self.temp.cleanup()
@@ -72,6 +73,19 @@ class M43RuntimeTests(unittest.TestCase):
         self.assertNotIn("synthetic-key", text)
         self.assertNotIn("@", text)
 
+    def test_runtime_exactly_matches_m42_first_boot_except_session_paths(self):
+        rendered = self.render()
+        known_good = config_text(
+            self.media / "amiga-os-310-a3000.rom", self.media / "rom.key",
+            Path("/tmp/proven-amix-session.hdf"), None, None, None,
+            Path("/tmp/proven-amix-runtime-logs"))
+        expected = known_good.replace(
+            "/tmp/proven-amix-session.hdf", str(self.session / "amix-system.hdf")
+        ).replace(
+            "/tmp/proven-amix-runtime-logs", str(self.session / "fs-uae-logs")
+        )
+        self.assertEqual(rendered, expected)
+
     def test_missing_session_and_disk_fail_cleanly(self):
         with self.assertRaisesRegex(utmlib.UTMError, "session does not exist"):
             utmlib.render_runtime(SYSTEM, "absent", self.root)
@@ -79,20 +93,35 @@ class M43RuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(utmlib.UTMError, "incomplete session disk set"):
             self.render()
 
-    def test_missing_rom_and_required_key_fail_cleanly(self):
-        (self.media / "operator-rom").unlink()
+    def test_missing_rom_fails_cleanly_and_key_remains_operator_selected(self):
+        (self.media / "amiga-os-310-a3000.rom").unlink()
         with self.assertRaisesRegex(utmlib.UTMError, "compatible-a3000-kickstart-rom"):
             self.render()
-        (self.media / "operator-rom").write_bytes(b"AMIROMTYPE1synthetic-rom")
-        (self.media / "operator-rom-key").unlink()
-        with self.assertRaisesRegex(utmlib.UTMError, "rom-key.*required"):
-            self.render()
+        (self.media / "amiga-os-310-a3000.rom").write_bytes(b"AMIROMTYPE1synthetic-rom")
+        (self.media / "rom.key").unlink()
+        self.assertNotIn("kickstart_key_file", self.render())
 
     def test_unencrypted_rom_does_not_require_key(self):
-        (self.media / "operator-rom").write_bytes(b"synthetic-unencrypted-rom")
-        (self.media / "operator-rom-key").unlink()
+        (self.media / "amiga-os-310-a3000.rom").write_bytes(b"synthetic-unencrypted-rom")
+        (self.media / "rom.key").unlink()
         text = self.render()
         self.assertNotIn("kickstart_key_file", text)
+
+    def test_rendering_does_not_read_or_transform_rom_or_key(self):
+        rom = self.media / "amiga-os-310-a3000.rom"
+        key = self.media / "rom.key"
+        original_open = Path.open
+
+        def reject_media_reads(path, *args, **kwargs):
+            if path in (rom, key):
+                raise AssertionError(f"runtime attempted to inspect operator media: {path}")
+            return original_open(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "open", reject_media_reads):
+            text = self.render()
+        self.assertIn(f"kickstart_file = {rom}", text)
+        self.assertIn(f"kickstart_key_file = {key}", text)
+        self.assertNotIn("operator-rom", text)
 
     def test_missing_configuration_is_controlled(self):
         manifest = copy.deepcopy(system_manifest(SYSTEM)[1])

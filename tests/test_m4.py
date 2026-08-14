@@ -68,8 +68,8 @@ class M40Tests(unittest.TestCase):
         self.assertFalse(next(item for item in items if item["logical_name"] == "rom-key")["required"])
         rom = next(item for item in items if item["logical_name"] == "compatible-a3000-kickstart-rom")
         key = next(item for item in items if item["logical_name"] == "rom-key")
-        self.assertEqual(rom["filenames"], ["operator-rom"])
-        self.assertEqual(key["filenames"], ["operator-rom-key"])
+        self.assertEqual(rom["filenames"], ["amiga-os-310-a3000.rom"])
+        self.assertEqual(key["filenames"], ["rom.key"])
 
     def test_unmapped_amix_media_fail_without_authenticity_claim(self):
         with tempfile.TemporaryDirectory() as directory:

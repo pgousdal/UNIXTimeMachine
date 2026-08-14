@@ -67,7 +67,7 @@ media:
     - logical_name: compatible-a3000-kickstart-rom
       required: true
       operator_path: explicit
-      filenames: [operator-rom]
+      filenames: [amiga-os-310-a3000.rom]
       runtime_token: "@ROM@"
       representation: rom-image
       attachment: read-only-or-private-staging-copy
@@ -75,12 +75,9 @@ media:
       required: false
       operator_path: explicit
       required_when: supplied-rom-representation-requires-key
-      filenames: [operator-rom-key]
+      filenames: [rom.key]
       runtime_option_token: "@ROM_KEY_OPTION@"
       runtime_option: "kickstart_key_file = {path}"
-      required_when_runtime_artifact_prefix:
-        logical_name: compatible-a3000-kickstart-rom
-        ascii: AMIROMTYPE1
       representation: rom-key
       attachment: read-only-or-private-staging-copy
 canonical_target:
@@ -105,6 +102,7 @@ preservation:
 session:
   public_eligible: false
   reset_strategy: copy-on-session
+  copy_method: full-copy
   network: disabled
 readiness:
   supported: false

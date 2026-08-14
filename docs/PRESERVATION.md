@@ -85,6 +85,8 @@ Real publication completed through that generic path. The qualified golden and
 its pristine pre-launch session shared SHA-256
 `48d36859b1b69cf0cd56f6b846b5a4369575f3350225a60451c9d827865db918`.
 Repository validation neither accesses nor republishes either real artifact.
-The M4.3 renderer attaches only the writable session hardfile and references
+AMIX session preparation always makes a full, fsynced copy of the immutable
+golden hardfile; it does not use a reflink for this system. The M4.3 renderer
+attaches only the writable session hardfile and references
 the protected operator ROM/key by path; those proprietary bytes do not enter
 the golden, session, generated metadata, or repository.

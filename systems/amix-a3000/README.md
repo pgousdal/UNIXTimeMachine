@@ -220,20 +220,20 @@ On the Debian 13 amd64 qualification host:
 make provision
 make provision                         # must report changed=0
 sudo cat /opt/unix-time-machine/fs-uae/3.1.66-2+b1/PROVENANCE
-sudo install -o root -g unix-time-machine -m 0440 /lawful/path/to/a3000.rom \
-  /srv/unix-time-machine/media/amix-a3000/operator-rom
+sudo install -o root -g unix-time-machine -m 0440 /lawful/path/to/amiga-os-310-a3000.rom \
+  /srv/unix-time-machine/media/amix-a3000/amiga-os-310-a3000.rom
 sudo install -o root -g unix-time-machine -m 0440 /lawful/path/to/rom.key \
-  /srv/unix-time-machine/media/amix-a3000/operator-rom-key
+  /srv/unix-time-machine/media/amix-a3000/rom.key
 python3 scripts/fsuae_m41.py prepare \
-  --rom /srv/unix-time-machine/media/amix-a3000/operator-rom \
-  --rom-key /srv/unix-time-machine/media/amix-a3000/operator-rom-key \
+  --rom /srv/unix-time-machine/media/amix-a3000/amiga-os-310-a3000.rom \
+  --rom-key /srv/unix-time-machine/media/amix-a3000/rom.key \
   --workspace /srv/unix-time-machine/staging/amix-m41-reconciliation
 DISPLAY=:99 python3 scripts/fsuae_m41.py qualify \
   --workspace /srv/unix-time-machine/staging/amix-m41-reconciliation
 find /srv/unix-time-machine/staging/amix-m41-reconciliation/runs \
   -type f -printf '%M %u:%g %s %p\n'
 ss -ltnp
-sha256sum /srv/unix-time-machine/media/amix-a3000/operator-rom
+sha256sum /srv/unix-time-machine/media/amix-a3000/amiga-os-310-a3000.rom
 find /srv/unix-time-machine/media /srv/unix-time-machine/golden \
   -printf '%M %u:%g %p\n'
 ```
@@ -320,8 +320,8 @@ python3 scripts/utm.py media inventory-amix \
 python3 scripts/utm.py install prepare-amix \
   /srv/unix-time-machine/reports/amix-a3000/m42-media.json \
   /srv/unix-time-machine/staging/amix-m42-base-install \
-  --rom /srv/unix-time-machine/media/amix-a3000/operator-rom \
-  --rom-key /srv/unix-time-machine/media/amix-a3000/operator-rom-key \
+  --rom /srv/unix-time-machine/media/amix-a3000/amiga-os-310-a3000.rom \
+  --rom-key /srv/unix-time-machine/media/amix-a3000/rom.key \
   --rdb-size-mib RDB_CANDIDATE_MIB
 ```
 
@@ -411,11 +411,13 @@ front-end diagnostic that `scsi6` is not known is retained: the tested core
 then initialized A3000 mainboard SCSI and attached HD unit 6 successfully.
 
 Runtime ROM material remains under protected operator media. The established
-deployment names are `operator-rom` and, when required, `operator-rom-key`.
-An `AMIROMTYPE1` representation requires the key before launch; an unencrypted
-representation may omit it. Rendered configuration contains paths, never ROM
-or key bytes. Display selection remains an operator host concern and the
-template does not prescribe Xvfb or `DISPLAY`.
+Amiga Forever deployment names are `amiga-os-310-a3000.rom` and optional
+adjacent `rom.key`. The renderer preserves that operator representation: it
+includes the key option when the
+key is supplied and omits it otherwise, without inspecting, converting,
+decrypting, or copying either artifact. Rendered configuration contains paths,
+never ROM or key bytes. Display selection remains an operator host concern and
+the template does not prescribe Xvfb or `DISPLAY`.
 
 `system start` retains the existing emulator lookup, deterministic renderer,
 PTY process supervision, transcript, state file, and argv-list execution. In
@@ -427,11 +429,13 @@ disposable session boots through `utm.py system start`.
 
 ### Stopping an incomplete guest boot
 
-The current real M4.3 qualification attempt is a failed-boot scenario: the
-deployed operator ROM was the previously tested incompatible A3000 Kickstart
-2.04 rather than the qualified A3000 Kickstart 3.1, and the guest remained at
-the white Kickstart screen without reaching an AMIX login or shell. Do not
-alter or stop that live session as part of repository tests or validation.
+The latest real M4.3 qualification isolated a presentation mismatch: a fresh
+full-copy session HDF boots with the proven Amiga Forever A3000 3.1 ROM and key
+in their supplied filename representation, while the byte-identical ROM under
+the former generic runtime name produced a white screen. The runtime therefore
+passes through `amiga-os-310-a3000.rom` and adjacent `rom.key` without content
+inspection or reinterpretation. Do not alter or stop a live qualification
+session as part of repository tests or validation.
 
 When a supervised emulator is in this condition, stop that specific disposable
 session explicitly:

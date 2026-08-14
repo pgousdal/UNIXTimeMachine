@@ -111,29 +111,30 @@ def verify_media(system_id: str, host_root: Path) -> list[MediaResult]:
     return results
 
 
-def copy_exclusive(source: Path, destination: Path) -> str:
+def copy_exclusive(source: Path, destination: Path, *, reflink: bool = True) -> str:
     source = source.resolve(strict=True)
     if not source.is_file():
         raise UTMError(f"source is not a regular file: {source}")
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
         raise UTMError(f"refusing to overwrite existing file: {destination}")
-    try:
-        subprocess.run(["cp", "--reflink=always", "--", str(source), str(destination)], check=True,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        method = "reflink"
-    except (FileNotFoundError, subprocess.CalledProcessError):
+    if reflink:
         try:
-            with source.open("rb") as src, destination.open("xb") as dst:
-                shutil.copyfileobj(src, dst, 1024 * 1024)
-                dst.flush()
-                os.fsync(dst.fileno())
-            shutil.copystat(source, destination)
-            method = "full-copy"
-        except Exception:
-            destination.unlink(missing_ok=True)
-            raise
-    return method
+            subprocess.run(["cp", "--reflink=always", "--", str(source), str(destination)], check=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return "reflink"
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            pass
+    try:
+        with source.open("rb") as src, destination.open("xb") as dst:
+            shutil.copyfileobj(src, dst, 1024 * 1024)
+            dst.flush()
+            os.fsync(dst.fileno())
+        shutil.copystat(source, destination)
+        return "full-copy"
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
 
 
 def prepared_disks(manifest: dict) -> list[dict]:
@@ -205,6 +206,7 @@ def prepare_session(system_id: str, session_id: str, host_root: Path) -> tuple[P
     _, manifest = system_manifest(safe_id(system_id, "system id"))
     safe_id(session_id, "session id")
     disks = prepared_disks(manifest)
+    full_copy = manifest.get("session", {}).get("copy_method") == "full-copy"
     golden_dir = host_root / "golden" / system_id
     goldens = [(disk, golden_dir / disk["golden_filename"]) for disk in disks]
     try:
@@ -239,7 +241,10 @@ def prepare_session(system_id: str, session_id: str, host_root: Path) -> tuple[P
         try:
             for disk, golden in goldens:
                 destination = transaction / disk["session_filename"]
-                methods.append(copy_exclusive(golden, destination))
+                if full_copy:
+                    methods.append(copy_exclusive(golden, destination, reflink=False))
+                else:
+                    methods.append(copy_exclusive(golden, destination))
                 destination.chmod(0o640)
             after = {disk["id"]: sha256(path) for disk, path in goldens}
         except PermissionError as exc:
@@ -288,7 +293,6 @@ def render_runtime(system_id: str, session_id: str, host_root: Path) -> Path:
         replacements[disk["runtime_token"]] = runtime_path(path)
     media = manifest.get("media", {})
     media_dir = host_root / "media" / media.get("directory", system_id)
-    runtime_artifacts = {}
     for item in media.get("items", []):
         if item.get("runtime_token"):
             candidates = [media_dir / name for name in item.get("filenames", [])]
@@ -296,31 +300,15 @@ def render_runtime(system_id: str, session_id: str, host_root: Path) -> Path:
             if artifact is None:
                 raise UTMError(f"missing runtime support artifact: {item['logical_name']}")
             replacements[item["runtime_token"]] = runtime_path(artifact)
-            runtime_artifacts[item["logical_name"]] = artifact
     for item in media.get("items", []):
         option_token = item.get("runtime_option_token")
         if not option_token:
             continue
         candidates = [media_dir / name for name in item.get("filenames", [])]
         artifact = next((path for path in candidates if path.is_file()), None)
-        condition = item.get("required_when_runtime_artifact_prefix")
-        required = False
-        if condition:
-            source = runtime_artifacts.get(condition.get("logical_name"))
-            prefix = condition.get("ascii")
-            if source is None or not isinstance(prefix, str):
-                raise UTMError(f"invalid conditional runtime artifact contract: {item['logical_name']}")
-            with source.open("rb") as stream:
-                required = stream.read(len(prefix)) == prefix.encode("ascii")
         if artifact is None:
-            if required:
-                raise UTMError(
-                    f"missing required runtime support artifact: {item['logical_name']} "
-                    f"(required by {condition['logical_name']} representation)"
-                )
             replacements[option_token] = ""
         else:
-            runtime_artifacts[item["logical_name"]] = artifact
             option = item.get("runtime_option")
             if not isinstance(option, str) or "{path}" not in option:
                 raise UTMError(f"invalid runtime option contract: {item['logical_name']}")

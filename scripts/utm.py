@@ -220,7 +220,18 @@ def cmd_system_start(args):
         return exit_code
     finally:
         if child_pid is not None:
-            atomic_json(state, {**runtime, "exit_code": exit_code, "pid": child_pid})
+            # A concurrent `system stop` may have recorded why the child was
+            # terminated.  Preserve that operator evidence when the foreground
+            # supervisor observes the same child exit.
+            final_state = {}
+            if state.is_file():
+                import json
+                try:
+                    final_state = json.loads(state.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    final_state = {}
+            atomic_json(state, {**runtime, **final_state,
+                                "exit_code": exit_code, "pid": child_pid})
 
 
 def cmd_system_stop(args):
@@ -229,14 +240,30 @@ def cmd_system_stop(args):
         raise UTMError("system is not running")
     import json
     data = json.loads(path.read_text(encoding="utf-8"))
+    requested_session = getattr(args, "session_id", None)
+    if requested_session and data.get("session_id") != requested_session:
+        raise UTMError(f"running system belongs to session {data.get('session_id')}, not {requested_session}")
     pid = data.get("pid", -1)
     if not pid_alive(pid):
         raise UTMError(f"recorded process {pid} is not running")
-    if not args.guest_synced:
-        raise UTMError("refusing abrupt stop; cleanly sync and halt the UNIX guest first; use --guest-synced only after guest filesystems are synced")
+    guest_synced = bool(args.guest_synced)
+    failed_boot = bool(getattr(args, "failed_boot", False))
+    if guest_synced == failed_boot:
+        raise UTMError("refusing abrupt stop; use exactly one of --guest-synced after syncing guest filesystems or --failed-boot when the guest never became usable")
     if not stop_process(pid, args.timeout):
         raise UTMError(f"emulator did not stop within {args.timeout}s; inspect it manually (no forced kill was sent)")
-    print(f"PASS    stopped emulator pid {pid}")
+    stopped_at = dt.datetime.now(dt.timezone.utc).isoformat()
+    termination = {
+        "clean_guest_shutdown": False,
+        "guest_filesystems_synced": guest_synced,
+        "kind": "guest-synced" if guest_synced else "failed-boot",
+        "stopped_at": stopped_at,
+    }
+    atomic_json(path, {**data, "runtime_status": "stopped",
+                       "termination": termination})
+    detail = ("guest sync attested" if guest_synced else
+              "failed/incomplete guest boot recorded; no guest sync claimed")
+    print(f"PASS    stopped emulator pid {pid}; {detail}")
     return 0
 
 
@@ -353,7 +380,12 @@ def parser():
     for name, func in (("status", cmd_system_status), ("start", cmd_system_start), ("stop", cmd_system_stop), ("ready", cmd_system_ready)):
         command = system.add_parser(name); command.add_argument("system_id"); command.add_argument("--session-id"); command.set_defaults(func=func)
         if name == "stop":
-            command.add_argument("--guest-synced", action="store_true"); command.add_argument("--timeout", type=float, default=10)
+            stop_mode = command.add_mutually_exclusive_group()
+            stop_mode.add_argument("--guest-synced", action="store_true",
+                                   help="attest guest filesystems were synced; this is not an OS-shutdown claim")
+            stop_mode.add_argument("--failed-boot", action="store_true",
+                                   help="stop an emulator whose guest never reached a usable state; does not claim guest sync")
+            command.add_argument("--timeout", type=float, default=10)
         if name == "ready": command.add_argument("--timeout", type=float, default=120)
     broker = sub.add_parser("broker").add_subparsers(dest="broker_command", required=True)
     request = broker.add_parser("request"); request.add_argument("system_id")

@@ -424,3 +424,31 @@ console. `system status` can report emulator process state, while `system
 ready` returns `HUMAN_REQUIRED`; root login remains human-verified until the
 serial/getty milestone. M4.3 must not be called qualified until a real
 disposable session boots through `utm.py system start`.
+
+### Stopping an incomplete guest boot
+
+The current real M4.3 qualification attempt is a failed-boot scenario: the
+deployed operator ROM was the previously tested incompatible A3000 Kickstart
+2.04 rather than the qualified A3000 Kickstart 3.1, and the guest remained at
+the white Kickstart screen without reaching an AMIX login or shell. Do not
+alter or stop that live session as part of repository tests or validation.
+
+When a supervised emulator is in this condition, stop that specific disposable
+session explicitly:
+
+```sh
+python3 scripts/utm.py system stop amix-a3000 \
+  --session-id SESSION_ID --failed-boot
+```
+
+`--failed-boot` is appropriate only when the guest never reached a usable state
+and cannot be cleanly halted because no shell or login exists. It records an
+incomplete/abnormal guest termination and explicitly does not attest that guest
+filesystems were synced or that the guest shut down cleanly. It sends the same
+bounded stop signal only to the PID recorded by `system start`; session state,
+diagnostic logs, and the disposable session HDF remain in place, and no golden
+path is used.
+
+Never use `--failed-boot` as a substitute for proper guest shutdown when the
+guest is operational. In that case, sync and halt the guest first and use
+`--guest-synced` with its existing filesystem-sync attestation semantics.

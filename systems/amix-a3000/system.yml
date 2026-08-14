@@ -91,3 +91,4 @@ status: defined
 milestones:
   m4.0: complete
   m4.1: complete
+  m4.2: implemented-awaiting-real-host-qualification

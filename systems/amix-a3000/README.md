@@ -3,7 +3,8 @@
 M4 is incomplete. M4.0 defines historical/media and backend architecture.
 M4.1 is **COMPLETE**: Debian 13 FS-UAE provisioning and the non-AMIX hardware
 substrate passed real-host qualification. There is no FS-UAE backend, AMIX
-installer, golden, or qualified AMIX console path in this repository.
+golden, or qualified AMIX console path in this repository. M4.2 media inventory
+and base-install staging are implemented but await a real operator-media run.
 
 ## Evidence classification
 
@@ -82,8 +83,11 @@ system and real-host evidence.
   output, and executable hash. The launcher and network helpers are absent.
   Real-host qualification confirmed A3000 startup, MMU/FPU, memory, RDB, tape,
   ROM loading, local serial PTY attachment, controlled exit, and local display.
-- **M4.2:** observed media labels/names/hashes; tape representation and order;
-  successful install; exact RDB geometry and partition layout.
+- **M4.2 — IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION:** observed media
+  inventory and base-install staging are implemented. No operator AMIX media or
+  completed installation evidence is available in this repository; exact
+  filenames, hashes, prompt sequence, RDB geometry, partitions, filesystems,
+  and shutdown behavior remain HUMAN_REQUIRED.
 - **M4.3:** official patch procedure and resulting identity; exact serial
   device, getty/inittab, baud and privileged-login behavior; exact clean halt
   command/marker; FS-UAE behavior after halt.
@@ -239,3 +243,133 @@ Qualification evidence distinguishes configuration acceptance, emulator
 startup, logged topology, and guest-visible behavior. Device visibility to
 AMIX is deferred to M4.2. No new TCP listener may appear, and a controlled
 SIGTERM exit must complete.
+
+## M4.2 operator-media and staging contract
+
+`media inventory-amix` consumes an operator-authored JSON specification with
+exactly `boot_floppy`, `root_install_floppy`, and `installation_tape` roles.
+Each floppy maps an explicit protected path to the operator's non-empty source
+description. The tape maps its protected directory, exact existing ordering
+index, and source description. No filename is prescribed by the repository.
+The command records observed paths/names, sizes and SHA-256 values as local
+UNPINNED provenance under `reports/amix-a3000`; it does not authenticate or
+download media.
+
+The tape index is authoritative observed ordering. Blank, duplicate, missing,
+unsafe, or unreferenced members fail closed. The index and every referenced
+member must be immutable files beneath protected AMIX media storage. M4.1
+qualified read-only directory tape attachment. An observed directory already
+using FS-UAE's exact `index.tape` convention is referenced read-only. For any
+differently named observed index/seglist, preparation preserves it unchanged
+and copies the ordered members into a private read-only staging representation
+with a derived `index.tape`; every copy method and source hash is recorded.
+
+`install prepare-amix` revalidates every inventoried hash, requires an explicit
+positive RDB candidate size, and creates a new operator-owned workspace beneath
+the generic staging root. It makes mode-0640 private copies of both floppies,
+records source/output hashes and copy methods before first boot, creates a new
+sparse hardfile named `base-amix-2.1-installation-staging.hdf`, and records final
+geometry/partitions as HUMAN_REQUIRED. This name is deliberately not a golden.
+
+The generated `install.fs-uae` uses the qualified A3000/68030/MMU/68882,
+2 MiB Chip/16 MiB motherboard RAM profile, JIT and networking disabled, the
+operator ROM/key, private boot/root floppy set, read-only tape at SCSI ID 4,
+and writable RDB disk at SCSI ID 6. `base-first-boot.fs-uae` contains the same
+profile and RDB but no installation floppy or tape. Both use private detailed
+logging; native display is authoritative. Neither config contains serial,
+getty, patch, broker, or guest-network setup.
+
+Failures never trigger staging cleanup. The workspace retains copies, disk,
+rendered configuration, logs, screenshots, inventory linkage, and the
+HUMAN_REQUIRED evidence worksheet. No AMIX golden is created or importable from
+this manifest.
+
+### M4.2 preparation commands
+
+First create an operator JSON file containing the three logical-role mappings
+described above. Paths and descriptions must reflect the actual protected
+media. Its structure is:
+
+```json
+{
+  "boot_floppy": {"path": "OPERATOR_BOOT_PATH", "source_description": "OPERATOR_DESCRIPTION"},
+  "root_install_floppy": {"path": "OPERATOR_ROOT_PATH", "source_description": "OPERATOR_DESCRIPTION"},
+  "installation_tape": {
+    "directory": "OPERATOR_TAPE_DIRECTORY",
+    "index_path": "OPERATOR_ORDERING_SOURCE",
+    "source_description": "OPERATOR_DESCRIPTION"
+  }
+}
+```
+
+Capitalized values are required operator substitutions, not historical
+filenames or canonical paths. Then run:
+
+```sh
+python3 scripts/utm.py media inventory-amix \
+  /path/to/operator-authored-m42.json \
+  /srv/unix-time-machine/reports/amix-a3000/m42-media.json
+
+python3 scripts/utm.py install prepare-amix \
+  /srv/unix-time-machine/reports/amix-a3000/m42-media.json \
+  /srv/unix-time-machine/staging/amix-m42-base-install \
+  --rom /srv/unix-time-machine/media/amix-a3000/operator-rom \
+  --rom-key /srv/unix-time-machine/media/amix-a3000/operator-rom-key \
+  --rdb-size-mib RDB_CANDIDATE_MIB
+```
+
+`RDB_CANDIDATE_MIB` is an explicit qualification input, not the former 450 MiB
+planning value. Replace it only with the operator's documented practical
+candidate. The staging path must not already exist.
+
+### M4.2 real-host installation gate
+
+With the already-local Xvfb `:99` running with `-nolisten tcp`, record the
+listener baseline and launch the installer exactly as follows:
+
+```sh
+ss -H -ltn > /srv/unix-time-machine/staging/amix-m42-base-install/listeners-before.txt
+DISPLAY=:99 /usr/bin/fs-uae \
+  /srv/unix-time-machine/staging/amix-m42-base-install/install.fs-uae \
+  > /srv/unix-time-machine/staging/amix-m42-base-install/fs-uae-install.stdout \
+  2> /srv/unix-time-machine/staging/amix-m42-base-install/fs-uae-install.stderr
+ss -H -ltn > /srv/unix-time-machine/staging/amix-m42-base-install/listeners-after.txt
+```
+
+From the native display, record screenshots and the exact observed sequence in
+`installation-evidence.json`: initial boot, boot-to-root floppy transition,
+language/installation selection, disk and tape detection, disk initialization,
+RDB/partition and filesystem creation, package selection, every tape/member
+transition, kernel/system installation, completion, and required media
+ejection. No guest command or prompt text is specified until observed.
+
+After completion, stop the emulator without inventing an AMIX shutdown claim,
+then run the generated hard-disk-only configuration with the same stdout/stderr
+capture pattern:
+
+```sh
+DISPLAY=:99 /usr/bin/fs-uae \
+  /srv/unix-time-machine/staging/amix-m42-base-install/base-first-boot.fs-uae \
+  > /srv/unix-time-machine/staging/amix-m42-base-install/fs-uae-first-boot.stdout \
+  2> /srv/unix-time-machine/staging/amix-m42-base-install/fs-uae-first-boot.stderr
+```
+
+Confirm no floppy or tape is attached, reach native login or first-boot
+configuration, and record base AMIX
+2.1 identity, devices, memory, partitions, filesystems, boot partition, and
+release data. Observe the minimum safe shutdown command, sync/unmount output,
+stable halted marker, and whether FS-UAE remains running; these observations
+are inputs to M4.3, not an implemented shutdown protocol.
+
+Before and after each emulator run, compare listening TCP sockets. After the
+installation, re-hash every canonical source listed in the inventory and record
+the results with:
+
+```sh
+python3 scripts/utm.py media verify-amix-inventory \
+  /srv/unix-time-machine/reports/amix-a3000/m42-media.json
+```
+
+Any failure remains preserved. M4.2 becomes COMPLETE only after
+all 20 real-host gates in the task are reconciled; until then the installation
+procedure and evidence remain HUMAN_REQUIRED.

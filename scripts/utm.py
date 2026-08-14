@@ -17,6 +17,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from manifestlib import system_manifest
+from amix_m42 import inventory_amix, prepare_amix, verify_amix_inventory
 from media43bsd import prepare_43bsd
 from utmlib import (DEFAULT_ROOT, UTMError, atomic_json, find_emulator, import_golden,
                     interactive_console, pid_alive, prepare_install, prepare_session, readiness,
@@ -100,6 +101,25 @@ def cmd_media_prepare_43bsd(args):
     return 0
 
 
+def cmd_media_inventory_amix(args):
+    try:
+        output = inventory_amix(Path(args.spec), Path(args.output), root_path(args))
+    except (UTMError, ValueError, OSError, KeyError) as exc:
+        print(f"FAIL    {exc}", file=sys.stderr); return 1
+    print(f"PASS    recorded observed AMIX media inventory: {output}")
+    print("HUMAN_REQUIRED: local hashes are provenance observations, not canonical authentication")
+    return 0
+
+
+def cmd_media_verify_amix_inventory(args):
+    try:
+        verify_amix_inventory(Path(args.inventory), root_path(args))
+    except (UTMError, ValueError, OSError, KeyError) as exc:
+        print(f"FAIL    {exc}", file=sys.stderr); return 1
+    print(f"PASS    canonical AMIX sources still match inventory: {args.inventory}")
+    return 0
+
+
 def cmd_golden_import(args):
     path, methods = import_golden(args.system_id, Path(args.source), root_path(args))
     print(f"PASS    imported complete prepared disk set as immutable golden ({', '.join(methods)}): {path}")
@@ -123,6 +143,19 @@ def cmd_install_prepare(args):
     print(f"PASS    installation bootstrap hardware staged: {bootstrap}")
     print(f"PASS    installed-system runtime verification hardware staged: {runtime}")
     print("HUMAN_REQUIRED: run the bootstrap configuration first and follow the documented guest installation and phase-transition steps")
+    return 0
+
+
+def cmd_install_prepare_amix(args):
+    try:
+        workspace = prepare_amix(
+            Path(args.inventory), Path(args.staging), root_path(args), Path(args.rom),
+            Path(args.rom_key) if args.rom_key else None, args.rdb_size_mib)
+    except (UTMError, ValueError, OSError, KeyError) as exc:
+        print(f"FAIL    {exc}", file=sys.stderr); return 1
+    print(f"PASS    prepared base AMIX 2.1 installation staging: {workspace}")
+    print("HUMAN_REQUIRED: perform the native-display installation and record only observed prompts")
+    print("SKIP    patch, serial getty, golden import, and broker integration are outside M4.2")
     return 0
 
 
@@ -286,12 +319,23 @@ def parser():
     prepare43 = media.add_parser("prepare-43bsd")
     prepare43.add_argument("source_dir"); prepare43.add_argument("destination_dir")
     prepare43.set_defaults(func=cmd_media_prepare_43bsd)
+    inventory_amix_parser = media.add_parser("inventory-amix")
+    inventory_amix_parser.add_argument("spec"); inventory_amix_parser.add_argument("output")
+    inventory_amix_parser.set_defaults(func=cmd_media_inventory_amix)
+    verify_amix_parser = media.add_parser("verify-amix-inventory")
+    verify_amix_parser.add_argument("inventory")
+    verify_amix_parser.set_defaults(func=cmd_media_verify_amix_inventory)
     golden = sub.add_parser("golden").add_subparsers(dest="golden_command", required=True)
     imp = golden.add_parser("import"); imp.add_argument("system_id"); imp.add_argument("source"); imp.set_defaults(func=cmd_golden_import)
     install = sub.add_parser("install").add_subparsers(dest="install_command", required=True)
     stage = install.add_parser("prepare"); stage.add_argument("system_id"); stage.add_argument("staging")
     stage.add_argument("--allow-unpinned", action="store_true")
     stage.set_defaults(func=cmd_install_prepare)
+    stage_amix = install.add_parser("prepare-amix")
+    stage_amix.add_argument("inventory"); stage_amix.add_argument("staging")
+    stage_amix.add_argument("--rom", required=True); stage_amix.add_argument("--rom-key")
+    stage_amix.add_argument("--rdb-size-mib", required=True, type=int)
+    stage_amix.set_defaults(func=cmd_install_prepare_amix)
     session = sub.add_parser("session").add_subparsers(dest="session_command", required=True)
     prep = session.add_parser("prepare"); prep.add_argument("system_id"); prep.add_argument("--session-id"); prep.set_defaults(func=cmd_session_prepare)
     system = sub.add_parser("system").add_subparsers(dest="system_command", required=True)

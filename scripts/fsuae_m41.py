@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import pty
+import re
 import signal
 import stat
 import subprocess
@@ -115,7 +116,9 @@ def render_probe(workspace: Path, rom: Path, rom_key: Path | None, serial_pty: s
     text = TEMPLATE.read_text()
     for token, value in values.items():
         text = text.replace(token, value)
-    if "@" in text.replace("@QUALIFICATION_PTY@", ""):
+    unresolved = text.replace("@QUALIFICATION_PTY@", "").replace(
+        "@QUALIFICATION_LOG_DIR@", "")
+    if "@" in unresolved:
         raise UTMError("unresolved M4.1 configuration token")
     lowered = text.lower()
     if any(value in lowered for value in FORBIDDEN_CONFIG):
@@ -163,6 +166,58 @@ def listening_tcp() -> set[str]:
     return set(result.stdout.splitlines())
 
 
+def runtime_evidence(text: str, metadata: dict, slave_path: str) -> dict[str, bool]:
+    """Evaluate only detailed UAE output produced by the current run."""
+    rdb = re.escape(str(Path(metadata["probe_rdb"]).resolve()))
+    tape = re.escape(str(Path(metadata["synthetic_tape"]).resolve()))
+    index = re.escape(str((Path(metadata["synthetic_tape"]) / "index.tape").resolve()))
+    serial = re.escape(slave_path)
+    rdb_kib = metadata["probe_rdb_size"] // 1024
+    checks = {
+        "a3000": r'config match for ["\']A3000["\']',
+        "cpu_fpu_mmu_jit": r"CPU=68030,\s*FPU=68882,\s*MMU=68030,\s*JIT(?:=[^=,\s]+)?=0",
+        "chip_ram_2_mib": (r"(?:\bchipmem_size\s*[=:]\s*4\b|"
+                           r"set option [\"']chipmem_size[\"'] to [\"']4[\"'])"),
+        "a3000_ram_16_mib": (r"(?:\ba3000mem_size\s*[=:]\s*16\b|"
+                                r"set option [\"']a3000mem_size[\"'] to [\"']16[\"'])"),
+        "a3000_scsi": r"Initializing A3000 mainboard SCSI",
+        "rdb_hd_unit_6": rf"Adding A3000 mainboard SCSI HD unit 6 .*{rdb}",
+        "rdb_opened": rf"HDF opened as {rdb_kib}K\b",
+        "tape_unit_4": rf"Adding A3000 mainboard SCSI TAPE unit 4 .*{tape}",
+        "tape_index_opened": rf"TAPEEMU INDEX:\s*['\"]?{index}['\"]?",
+        "serial_device": rf"serial port device:\s*{serial}",
+        "serial_opened": rf"serial:\s*open ['\"]{serial}['\"]\s*->\s*fd=\d+",
+        "clean_shutdown": r"SDL_QUIT",
+    }
+    evidence = {name: re.search(pattern, text, re.IGNORECASE) is not None
+                for name, pattern in checks.items()}
+    rom = re.escape(str(Path(metadata["artifacts"]["rom"]["path"]).resolve()))
+    evidence["rom_loaded"] = re.search(
+        rf"(?:Known|Unknown) ROM ['\"]{rom}['\"] loaded", text, re.IGNORECASE) is not None
+    evidence["rom_identity_unknown"] = re.search(
+        rf"Unknown ROM ['\"]{rom}['\"] loaded", text, re.IGNORECASE) is not None
+    if "rom_key" in metadata["artifacts"]:
+        evidence["encrypted_rom_key_loaded"] = re.search(
+            r"read rom key file, size\s*=\s*\d+", text, re.IGNORECASE) is not None
+        evidence["encrypted_rom_decoded_loaded"] = (
+            evidence["encrypted_rom_key_loaded"] and
+            evidence["rom_loaded"])
+    return evidence
+
+
+def validate_run_log(log_path: Path, run_started_ns: int, metadata: dict,
+                     slave_path: str) -> tuple[dict[str, bool], list[str]]:
+    if not log_path.is_file():
+        raise UTMError("current run did not create its detailed UAE log")
+    if log_path.stat().st_mtime_ns < run_started_ns:
+        raise UTMError("detailed UAE log predates the current run boundary")
+    evidence = runtime_evidence(log_path.read_text(errors="replace"), metadata, slave_path)
+    informational = {"rom_identity_unknown", "encrypted_rom_key_loaded"}
+    missing = [name for name, present in evidence.items()
+               if not present and name not in informational]
+    return evidence, missing
+
+
 def qualify(args) -> int:
     workspace = Path(args.workspace).resolve(strict=True)
     metadata = json.loads((workspace / "probe.json").read_text())
@@ -173,17 +228,24 @@ def qualify(args) -> int:
         return 2
     master, slave = pty.openpty()
     process = None
+    run_dir = workspace / "runs" / f"run-{time.time_ns()}-{os.getpid()}"
+    run_dir.mkdir(parents=True, mode=0o750)
+    stdout_log = run_dir / "fs-uae-stdout.log"
+    stderr_log = run_dir / "fs-uae-stderr.log"
+    detailed_log = run_dir / "fs-uae.log.txt"
+    results_path = run_dir / "qualification.json"
     try:
         slave_path = os.ttyname(slave)
         template = (workspace / "m41-probe.fs-uae").read_text()
-        config = workspace / "m41-qualified.fs-uae"
-        config.write_text(template.replace("@QUALIFICATION_PTY@", slave_path))
+        config = run_dir / "m41-qualified.fs-uae"
+        config.write_text(template.replace("@QUALIFICATION_PTY@", slave_path).replace(
+            "@QUALIFICATION_LOG_DIR@", str(run_dir)))
         before = listening_tcp()
-        diagnostics = workspace / "fs-uae-diagnostics.log"
-        with diagnostics.open("wb") as log:
+        with stdout_log.open("wb") as stdout, stderr_log.open("wb") as stderr:
+            run_started_ns = time.time_ns()
             process = subprocess.Popen(["/usr/bin/fs-uae", str(config)],
-                                       stdin=subprocess.DEVNULL, stdout=log,
-                                       stderr=subprocess.STDOUT)
+                                       stdin=subprocess.DEVNULL, stdout=stdout,
+                                       stderr=stderr)
             time.sleep(args.observe_seconds)
             if process.poll() is not None:
                 raise UTMError(
@@ -206,18 +268,31 @@ def qualify(args) -> int:
                 pass
         os.close(master)
         os.close(slave)
-    text = diagnostics.read_text(errors="replace")
-    required = ("68030", "68882", "scsi6", "scsi4", "serial port device")
-    missing = [marker for marker in required if marker.lower() not in text.lower()]
+    evidence, missing = validate_run_log(
+        detailed_log, run_started_ns, metadata, slave_path)
+    diagnostic_text = stdout_log.read_text(errors="replace") + "\n" + (
+        stderr_log.read_text(errors="replace"))
+    network_warning = "Unrecognized network card" in diagnostic_text or (
+        "Unrecognized network card" in detailed_log.read_text(errors="replace"))
+    if network_warning:
+        missing.append("network_card_disabled_without_warning")
     results = {
-        "configuration_accepted": not missing,
+        "configuration_accepted": not network_warning,
         "controlled_exit_code": process.returncode,
+        "detailed_uae_log": str(detailed_log),
         "display": os.environ["DISPLAY"],
+        "display_classification": "observed-local-display-candidate",
+        "runtime_evidence": evidence,
+        "rom_identity": "Unknown ROM" if evidence["rom_identity_unknown"] else "not-asserted",
         "new_tcp_listeners": [],
+        "run_directory": str(run_dir),
+        "run_started_ns": run_started_ns,
         "serial_pty": slave_path,
-        "topology_log_markers_missing": missing,
+        "stderr_log": str(stderr_log),
+        "stdout_log": str(stdout_log),
+        "topology_evidence_missing": missing,
     }
-    atomic_json(workspace / "qualification.json", results)
+    atomic_json(results_path, results)
     if missing:
         raise UTMError(f"FS-UAE topology evidence incomplete: {', '.join(missing)}")
     print("PASS    FS-UAE started with the non-AMIX A3000 substrate")

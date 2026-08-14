@@ -116,6 +116,8 @@ M4 is incomplete. M4.0 establishes the conservative external-media contract
 and a backend-selected console/shutdown capability boundary. M4.1 is
 **IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION**: it pins/provisions Debian
 13 FS-UAE and supplies a non-AMIX A3000/RDB/tape/serial substrate probe. It
+now captures a run-scoped detailed UAE log after reconciling a sparse-stdout
+false negative; the corrected harness still requires a real-host rerun. It
 implements no FS-UAE backend, installation, golden, or AMIX session. Later
 gates are M4.2 installation,
 M4.3 patched runtime/serial/halt qualification, M4.4 broker integration, and

@@ -1,4 +1,4 @@
-# AMIX 2.1 / Amiga 3000 — M4.0 design contract
+# AMIX 2.1 / Amiga 3000 — M4 design and M4.1 qualification contract
 
 M4 is incomplete. M4.0 defines historical/media and backend architecture.
 M4.1 implements a Debian 13 FS-UAE provisioning and non-AMIX hardware probe,
@@ -118,10 +118,36 @@ transfers serial bytes. The qualifier fails unless required diagnostics are
 observed. Bidirectional serial traffic remains SKIP without a guest serial
 driver, and AMIX getty work remains M4.3.
 
-The Debian binary links SDL/OpenGL/X11 libraries. M4.1 does not provision Xvfb:
-qualification first requires an ordinary local `DISPLAY`. Absence of one is
-HUMAN_REQUIRED, not PASS. If Debian qualification proves Xvfb necessary, that
-dependency requires a separately evidenced change.
+The first Debian 13 run exposed a qualifier defect, not a topology failure:
+FS-UAE's stdout/stderr was sparse while detailed UAE evidence was written to
+the default mutable user cache. The reconciled qualifier sets `logs_dir` to a
+new, empty per-run directory beneath the probe workspace. It preserves
+`fs-uae-stdout.log`, `fs-uae-stderr.log`, `fs-uae.log.txt`, the exact run
+configuration, and `qualification.json` together. The detailed log must have
+been created after that run's recorded launch boundary; neither a prior run nor
+rendered config text can satisfy runtime evidence.
+
+Pinned 3.1.66 source accepts `network_card = 0` as no card. The former value
+`none` was invalid and produced `WARNING: Unrecognized network card`; that
+warning is now a qualification failure. Runtime validation requires the UAE
+log to show the A3000 match, CPU/FPU/MMU/JIT values, translated 2 MiB Chip and
+16 MiB A3000 memory values, mainboard SCSI initialization, the exact probe RDB
+opened as HD unit 6, tape unit 4 and its exact index, and the allocated serial
+PTY actually opened. Clean SDL shutdown is also required.
+
+The observed encrypted Amiga Forever ROM was decoded and loaded after its key
+was read, but FS-UAE classified it only as `Unknown ROM`. Qualification records
+that literal classification and the observed external-media hash; it does not
+invent an internal ROM identity.
+
+The Debian binary links SDL/OpenGL/X11 libraries. Xvfb `:99` with llvmpipe was
+observed to start it successfully on the headless qualification host, with no
+new TCP listener. This is an observed local-only display candidate, not a
+universal FS-UAE requirement. M4.1 therefore does not add Xvfb to every host's
+foundation provisioning: a host with a real local X display does not need it,
+and the corrected real-host rerun must still qualify the complete topology.
+Missing `DISPLAY` remains HUMAN_REQUIRED, not PASS. Install/provision Xvfb as a
+qualification-host prerequisite only where that host has no local display.
 
 ## Exact M4.1 real-host procedure
 
@@ -133,23 +159,29 @@ make provision                         # must report changed=0
 sudo cat /opt/unix-time-machine/fs-uae/3.1.66-2+b1/PROVENANCE
 sudo install -o root -g unix-time-machine -m 0440 /lawful/path/to/a3000.rom \
   /srv/unix-time-machine/media/amix-a3000/operator-rom
+sudo install -o root -g unix-time-machine -m 0440 /lawful/path/to/rom.key \
+  /srv/unix-time-machine/media/amix-a3000/operator-rom-key
 python3 scripts/fsuae_m41.py prepare \
   --rom /srv/unix-time-machine/media/amix-a3000/operator-rom \
-  --workspace /srv/unix-time-machine/staging/amix-m41-qualification
-DISPLAY=:0 python3 scripts/fsuae_m41.py qualify \
-  --workspace /srv/unix-time-machine/staging/amix-m41-qualification
+  --rom-key /srv/unix-time-machine/media/amix-a3000/operator-rom-key \
+  --workspace /srv/unix-time-machine/staging/amix-m41-reconciliation
+DISPLAY=:99 python3 scripts/fsuae_m41.py qualify \
+  --workspace /srv/unix-time-machine/staging/amix-m41-reconciliation
+find /srv/unix-time-machine/staging/amix-m41-reconciliation/runs \
+  -type f -printf '%M %u:%g %s %p\n'
 ss -ltnp
 sha256sum /srv/unix-time-machine/media/amix-a3000/operator-rom
 find /srv/unix-time-machine/media /srv/unix-time-machine/golden \
   -printf '%M %u:%g %p\n'
 ```
 
-Use the actual local display value rather than assuming `:0`. If the supplied
-ROM representation lawfully requires a key, install it under the same protected
-media directory with a noncanonical operator-chosen name and add `--rom-key`
-to `prepare`; no key name or hash is prescribed. Review `probe.json`, the
-rendered configuration, `fs-uae-diagnostics.log`, and `qualification.json`.
-Retain the workspace on every failure.
+The commands above reproduce the observed encrypted-ROM/Xvfb case: install the
+operator key read-only at the shown operator-chosen path and ensure the already
+qualified local-only Xvfb `:99` is running. For an unencrypted ROM or a real
+local display, omit `--rom-key` or use the actual `DISPLAY`; neither path may be
+assumed equivalent until observed. Use a new staging workspace so evidence from
+the false-negative run remains intact. Review `probe.json` and every file in
+the new `runs/run-*` directory. Retain every workspace on failure.
 
 Qualification evidence must distinguish configuration acceptance, emulator
 startup, logged topology, and guest-visible behavior. A native A3000 ROM screen

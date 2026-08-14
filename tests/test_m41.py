@@ -62,7 +62,7 @@ class M41Tests(unittest.TestCase):
         expected = {
             "amiga_model": "A3000", "cpu": "68030", "mmu": "68030",
             "fpu": "68882", "chip_memory": "2048", "motherboard_ram": "16384",
-            "jit_compiler": "0", "network_card": "none", "bsdsocket_library": "0",
+            "jit_compiler": "0", "network_card": "0", "bsdsocket_library": "0",
             "hard_drive_0_type": "rdb", "hard_drive_0_controller": "scsi6",
             "stdout": "1", "uaelog": "1",
         }
@@ -74,6 +74,7 @@ class M41Tests(unittest.TestCase):
         self.assertIn("scsi4", parsed["uae_uaehf1"])
         self.assertEqual(parsed["serial_port"], "@SERIAL_PTY@")
         self.assertIn("@ROM_KEY_OPTION@", text)
+        self.assertEqual(parsed["logs_dir"], "@QUALIFICATION_LOG_DIR@")
         lowered = text.lower()
         for forbidden in ("tcp://", "slirp", "uae_tap", "bridge", "netplay_server", "a2065"):
             self.assertNotIn(forbidden, lowered)
@@ -130,6 +131,67 @@ class M41Tests(unittest.TestCase):
         self.assertEqual(result, 2)
         self.assertIn("HUMAN_REQUIRED", output.getvalue())
         self.assertFalse((self.workspace / "qualification.json").exists())
+
+    def detailed_log(self, slave="/dev/pts/10"):
+        metadata = json.loads((self.workspace / "probe.json").read_text())
+        rdb = metadata["probe_rdb"]
+        tape = metadata["synthetic_tape"]
+        rom = metadata["artifacts"]["rom"]["path"]
+        return "\n".join((
+            'config match for "A3000"',
+            'set option "chipmem_size" to "4" (result: 1)',
+            'set option "a3000mem_size" to "16" (result: 1)',
+            "CPU=68030, FPU=68882, MMU=68030, JIT=0.",
+            "Initializing A3000 mainboard SCSI",
+            f"Adding A3000 mainboard SCSI HD unit 6 ({rdb})",
+            "HDF opened as 1024K",
+            f"Adding A3000 mainboard SCSI TAPE unit 4 ({tape})",
+            f"TAPEEMU INDEX: '{tape}/index.tape'",
+            f"serial port device: {slave}",
+            f"serial: open '{slave}' -> fd=22",
+            f"Unknown ROM '{rom}' loaded", "SDL_QUIT",
+        ))
+
+    def test_sparse_diagnostics_and_complete_current_detailed_log_pass(self):
+        self.prepare()
+        metadata = json.loads((self.workspace / "probe.json").read_text())
+        detailed = self.workspace / "current-fs-uae.log.txt"
+        boundary = os.stat(self.workspace).st_mtime_ns
+        detailed.write_text(self.detailed_log())
+        evidence, missing = fsuae_m41.validate_run_log(
+            detailed, boundary, metadata, "/dev/pts/10")
+        self.assertEqual(missing, [])
+        self.assertTrue(evidence["rdb_hd_unit_6"])
+        self.assertTrue(evidence["serial_opened"])
+        sparse_stdout_stderr = "FS-UAE 3.1.66 starting\n"
+        self.assertNotIn("CPU=68030", sparse_stdout_stderr)
+
+    def test_incomplete_or_stale_detailed_log_fails_closed(self):
+        self.prepare()
+        metadata = json.loads((self.workspace / "probe.json").read_text())
+        detailed = self.workspace / "fs-uae.log.txt"
+        detailed.write_text('config match for "A3000"\n')
+        _, missing = fsuae_m41.validate_run_log(
+            detailed, 0, metadata, "/dev/pts/10")
+        self.assertIn("cpu_fpu_mmu_jit", missing)
+        future_boundary = detailed.stat().st_mtime_ns + 1
+        with self.assertRaisesRegex(UTMError, "predates the current run boundary"):
+            fsuae_m41.validate_run_log(
+                detailed, future_boundary, metadata, "/dev/pts/10")
+
+    def test_encrypted_unknown_rom_records_decode_without_identity_claim(self):
+        key = self.media / "operator-selected-key"
+        key.write_bytes(b"synthetic test key, not historical media")
+        key.chmod(0o440)
+        self.prepare(rom_key=str(key))
+        metadata = json.loads((self.workspace / "probe.json").read_text())
+        detailed = self.workspace / "fs-uae.log.txt"
+        detailed.write_text("read rom key file, size = 2069\n" + self.detailed_log())
+        evidence, missing = fsuae_m41.validate_run_log(
+            detailed, 0, metadata, "/dev/pts/10")
+        self.assertEqual(missing, [])
+        self.assertTrue(evidence["encrypted_rom_decoded_loaded"])
+        self.assertTrue(evidence["rom_identity_unknown"])
 
     def test_provenance_fails_closed_off_debian_13(self):
         args = Namespace(expected_version="3.1.66-2+b1", expected_architecture="amd64",

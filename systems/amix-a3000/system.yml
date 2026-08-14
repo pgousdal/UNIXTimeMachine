@@ -107,9 +107,9 @@ session:
 readiness:
   supported: false
   reason: graphical AMIX login remains human-verified until serial/getty qualification
-status: runtime-implemented-real-host-qualification-pending
+status: m4.3-complete-later-m4-gates-pending
 milestones:
   m4.0: complete
   m4.1: complete
   m4.2: complete
-  m4.3: implemented-real-host-session-launch-pending
+  m4.3: complete

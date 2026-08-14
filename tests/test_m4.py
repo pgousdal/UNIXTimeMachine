@@ -39,7 +39,7 @@ class M40Tests(unittest.TestCase):
 
     def test_amix_manifest_is_conservative_incomplete_and_network_disabled(self):
         manifest = self.manifest()
-        self.assertEqual(manifest["status"], "runtime-implemented-real-host-qualification-pending")
+        self.assertEqual(manifest["status"], "m4.3-complete-later-m4-gates-pending")
         self.assertEqual(manifest["session"]["network"], "disabled")
         self.assertFalse(manifest["session"]["public_eligible"])
         self.assertEqual(manifest["emulator"]["implementation"], "graphical-session-runtime")

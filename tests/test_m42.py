@@ -264,9 +264,10 @@ class M42Tests(unittest.TestCase):
             manifest = yaml.safe_load((ROOT / f"systems/{system_id}/system.yml").read_text())
             self.assertEqual(manifest["status"], "complete")
         amix = yaml.safe_load((ROOT / "systems/amix-a3000/system.yml").read_text())
-        self.assertEqual(amix["status"], "runtime-implemented-real-host-qualification-pending")
+        self.assertEqual(amix["status"], "m4.3-complete-later-m4-gates-pending")
         self.assertEqual(amix["milestones"]["m4.1"], "complete")
         self.assertEqual(amix["milestones"]["m4.2"], "complete")
+        self.assertEqual(amix["milestones"]["m4.3"], "complete")
 
 
 if __name__ == "__main__":

@@ -122,11 +122,13 @@ installation, golden, or AMIX session. M4.2 is **COMPLETE**: the real
 installation passed first boot, root login, read/write-root and active-swap
 checks, clean shutdown, installed-HDF structure/checksum checks, generic golden
 publication, and byte-identical pristine session preparation. M4.3 is
-**IMPLEMENTED / REAL-HOST SESSION LAUNCH PENDING**: the graphical FS-UAE
-backend renders the qualified A3000 profile from the disposable session and
-protected operator ROM/key, but has not yet booted the real session through
-`utm.py system start`. Serial/getty readiness, patch, broker, and full
-real-host qualification remain later gates. See
+**COMPLETE**: on the Debian 13 qualification host, the canonical graphical
+FS-UAE runtime booted a full-copy disposable session through `utm.py system
+start` and reached the AMIX 2.1 `login:` prompt. The immutable golden was never
+attached writable; runtime used only the writable session HDF and referenced
+the protected operator ROM/key in their preserved filename representation.
+Serial/getty readiness, patch, broker integration, and completion of the wider
+M4 track remain later gates. See
 `systems/amix-a3000/README.md`.
 
 ## M5 — BBS door

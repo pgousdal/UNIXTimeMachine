@@ -1,12 +1,15 @@
 # AMIX 2.1 / Amiga 3000 — M4 qualification contract
 
-M4 is incomplete. M4.0 defines historical/media and backend architecture.
-M4.1 is **COMPLETE**: Debian 13 FS-UAE provisioning and the non-AMIX hardware
-substrate passed real-host qualification. M4.2 is **COMPLETE**: installation,
-first boot, root/filesystem/swap checks, clean shutdown, golden publication,
-and a pristine disposable-session copy were qualified. M4.3 now implements the
-graphical FS-UAE session runtime; real launch through `utm.py system start`
-remains pending. There is not yet a qualified AMIX serial/getty broker console.
+The wider M4 track is incomplete. M4.0 defines historical/media and backend
+architecture. M4.1 is **COMPLETE**: Debian 13 FS-UAE provisioning and the
+non-AMIX hardware substrate passed real-host qualification. M4.2 is
+**COMPLETE**: installation, first boot, root/filesystem/swap checks, clean
+shutdown, golden publication, and a pristine disposable-session copy were
+qualified. M4.3 is **COMPLETE**:
+the graphical FS-UAE runtime launched a full-copy disposable session through
+the canonical `utm.py system start` path on the real Debian 13 host and reached
+the AMIX 2.1 `login:` prompt. There is not yet a qualified AMIX serial/getty
+broker console.
 
 ## Evidence classification
 
@@ -95,13 +98,15 @@ system and real-host evidence.
   The installed HDF was imported through the generic mechanism, the immutable
   golden verified byte-identical, and a pristine disposable session verified
   byte-identical before first launch.
-- **M4.3 — IMPLEMENTED / REAL-HOST SESSION LAUNCH PENDING:** generic runtime
-  rendering now selects the writable disposable RDB, protected operator ROM/key,
-  and qualified graphical FS-UAE hardware profile. It does not claim guest
-  readiness from emulator process state.
+- **M4.3 — COMPLETE:** generic runtime rendering selects the writable
+  full-copy disposable RDB, protected operator ROM/key, and qualified graphical
+  FS-UAE hardware profile. The canonical `utm.py system start` path booted the
+  real disposable session to the AMIX 2.1 `login:` prompt. Guest readiness was
+  observed interactively on the local-only qualification display; it is not
+  inferred from emulator process state.
 - **Later gates:** official patch identity; exact serial device, getty/inittab,
   baud and privileged-login behavior; broker attach/detach, shutdown driver,
-  halt marker/behavior, readiness, and full real-host qualification.
+  halt marker/behavior, and serial-console readiness and qualification.
 
 ## M4.1 source-backed substrate
 
@@ -424,21 +429,67 @@ PTY process supervision, transcript, state file, and argv-list execution. In
 this graphical phase the PTY captures emulator diagnostics, not an AMIX guest
 console. `system status` can report emulator process state, while `system
 ready` returns `HUMAN_REQUIRED`; root login remains human-verified until the
-serial/getty milestone. M4.3 must not be called qualified until a real
-disposable session boots through `utm.py system start`.
+serial/getty milestone.
 
-### Stopping an incomplete guest boot
+### M4.3 real-host runtime qualification
 
-The latest real M4.3 qualification isolated a presentation mismatch: a fresh
-full-copy session HDF boots with the proven Amiga Forever A3000 3.1 ROM and key
-in their supplied filename representation, while the byte-identical ROM under
-the former generic runtime name produced a white screen. The runtime therefore
-passes through `amiga-os-310-a3000.rom` and adjacent `rom.key` without content
-inspection or reinterpretation. Do not alter or stop a live qualification
-session as part of repository tests or validation.
+The operator prepared session `amix-m43-realhost-final` from the immutable
+golden `/srv/unix-time-machine/golden/amix-a3000/amix-system.hdf`. Its
+qualified SHA-256 was
+`48d36859b1b69cf0cd56f6b846b5a4369575f3350225a60451c9d827865db918`.
+Preparation reported `full-copy`; the session HDF was a byte-identical, fsynced
+copy before launch. This is the M4.3 boundary: M4.2 installed AMIX and created
+the immutable golden, while M4.3 qualified launch of a disposable runtime copy.
 
-When a supervised emulator is in this condition, stop that specific disposable
-session explicitly:
+The operator then launched the session on the Debian 13 qualification host:
+
+```sh
+DISPLAY=:99 \
+LIBGL_ALWAYS_SOFTWARE=1 \
+python3 scripts/utm.py system start \
+  amix-a3000 \
+  --session-id amix-m43-realhost-final
+```
+
+The generated configuration selected A3000, 68030 CPU, 68030 MMU, 68882 FPU,
+2 MiB Chip RAM, 16 MiB motherboard RAM, networking disabled, and the writable
+RDB session HDF on A3000 SCSI unit 6. It directly referenced the protected
+operator files
+`/srv/unix-time-machine/media/amix-a3000/amiga-os-310-a3000.rom` and
+`/srv/unix-time-machine/media/amix-a3000/rom.key`; it did not inspect, decrypt,
+transform, rename, or copy them. No golden disk was attached to the runtime and
+no AMIX disk was modified before launch.
+
+Observed interactively over the existing local-only Xvfb/VNC qualification
+display, the generated runtime completed boot and reached:
+
+```text
+UNIX(R) System V Release 4.0 AT&T Amiga (Unlimited) Version 2.1
+...
+The system is ready.
+
+localhost
+login:
+```
+
+This completes the canonical M4.3 `utm.py system start` real-host gate. It is a
+graphical, human-observed qualification only. No AMIX serial byte stream or
+serial getty was observed, so serial-console readiness, broker attachment, and
+serial-console qualification remain a later milestone.
+
+The preceding qualification work also isolated a presentation mismatch: a
+fresh full-copy session HDF boots with the proven Amiga Forever A3000 3.1 ROM
+and key in their supplied filename representation, while the byte-identical ROM
+under the former generic runtime name produced a white screen. The qualified
+runtime therefore preserves and passes through `amiga-os-310-a3000.rom` and
+adjacent `rom.key` without content inspection or reinterpretation. This
+simplified pass-through behavior is the qualified design.
+
+### Safe runtime stop modes
+
+Do not alter or stop a live qualification session as part of repository tests
+or validation. When a supervised emulator has not completed a usable boot, stop
+that specific disposable session explicitly:
 
 ```sh
 python3 scripts/utm.py system stop amix-a3000 \

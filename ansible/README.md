@@ -30,6 +30,13 @@ provisioning creates no historical media and does not weaken existing content.
 The verified source archive remains in the controlled system cache for
 auditing/reprovisioning.
 
+M4.1 additionally installs the exact Debian Trixie amd64 package
+`fs-uae=3.1.66-2+b1` from `main`. It does not install the FS-UAE launcher, a
+network helper, Xvfb, ROMs, or historical media. Installed package/dependency
+versions, apt policy, version output, and the executable hash are recorded under
+`/opt/unix-time-machine/fs-uae/`. Provisioning does not qualify emulator
+behavior; follow `systems/amix-a3000/README.md` on the real Debian host.
+
 Provisioning does not select human operators. Enroll one existing local account
 explicitly and idempotently from the repository root:
 

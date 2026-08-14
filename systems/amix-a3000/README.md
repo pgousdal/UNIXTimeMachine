@@ -1,8 +1,9 @@
 # AMIX 2.1 / Amiga 3000 — M4.0 design contract
 
-M4 is incomplete. M4.0 defines historical/media and backend architecture only:
-there is no FS-UAE backend, runtime configuration, installer, golden, or
-qualified console path in this repository.
+M4 is incomplete. M4.0 defines historical/media and backend architecture.
+M4.1 implements a Debian 13 FS-UAE provisioning and non-AMIX hardware probe,
+but awaits real-host qualification. There is no FS-UAE backend, AMIX installer,
+golden, or qualified AMIX console path in this repository.
 
 ## Evidence classification
 
@@ -73,8 +74,14 @@ system and real-host evidence.
 
 ## Qualification gates
 
-- **M4.1:** exact Debian 13 FS-UAE provenance/pin; A3000 startup; MMU/FPU,
-  RDB, SCSI tape, ROM, local serial PTY, and display/X behavior.
+- **M4.1 — IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION:** Debian 13 amd64
+  `fs-uae=3.1.66-2+b1` from Trixie `main` is pinned. The signed archive index
+  identifies `pool/main/f/fs-uae/fs-uae_3.1.66-2+b1_amd64.deb` with SHA-256
+  `5f703e361d242a99da46454a0b21aafed6010e4153682f1aeed9f59e5cd3d9e4`.
+  Provisioning records installed dependency versions, apt policy, version
+  output, and executable hash. The launcher and network helpers are absent.
+  The probe must still qualify A3000 startup, MMU/FPU, RDB, tape, ROM, serial
+  PTY, controlled exit, and display behavior on the Debian host.
 - **M4.2:** observed media labels/names/hashes; tape representation and order;
   successful install; exact RDB geometry and partition layout.
 - **M4.3:** official patch procedure and resulting identity; exact serial
@@ -84,3 +91,68 @@ system and real-host evidence.
   attach/detach, shutdown driver, and preservation-safe failures.
 - **M4.5:** complete real-host qualification, including two fresh disposable
   sessions and unchanged golden evidence.
+
+## M4.1 source-backed substrate
+
+The derived template `m41-probe.fs-uae.in` is based on FS-UAE 3.1.66 source
+and upstream option documentation, not an AMIX configuration copied from an
+archive. Source behavior establishes the following implementation capability:
+
+- `A3000` selects the model and a 68030; explicit `cpu`, `mmu`, and `fpu`
+  select 68030/68030/68882.
+- `chip_memory` and `motherboard_ram` express KiB values; the target is
+  2048 KiB and 16384 KiB.
+- `hard_drive_0_type = rdb` forces an empty HDF into RDB mode. The disposable
+  probe HDF deliberately has no final geometry or partition table.
+- `scsi6` is passed as the hardfile controller/unit selector.
+- The low-level `uaehf` parser supports a read-only tape device, SCSI
+  controller selector `scsi4`, a directory/archive representation, and an
+  optional `index.tape` ordering file. M4.1 creates only a harmless synthetic
+  member and index.
+- `serial_port` accepts a Unix device path. The qualifier allocates a local
+  PTY and supplies its slave path; it never supplies `tcp://`.
+
+These are source-level findings. They do not prove the Debian binary accepts
+the rendered configuration, starts successfully, exposes devices to AMIX, or
+transfers serial bytes. The qualifier fails unless required diagnostics are
+observed. Bidirectional serial traffic remains SKIP without a guest serial
+driver, and AMIX getty work remains M4.3.
+
+The Debian binary links SDL/OpenGL/X11 libraries. M4.1 does not provision Xvfb:
+qualification first requires an ordinary local `DISPLAY`. Absence of one is
+HUMAN_REQUIRED, not PASS. If Debian qualification proves Xvfb necessary, that
+dependency requires a separately evidenced change.
+
+## Exact M4.1 real-host procedure
+
+On the Debian 13 amd64 qualification host:
+
+```sh
+make provision
+make provision                         # must report changed=0
+sudo cat /opt/unix-time-machine/fs-uae/3.1.66-2+b1/PROVENANCE
+sudo install -o root -g unix-time-machine -m 0440 /lawful/path/to/a3000.rom \
+  /srv/unix-time-machine/media/amix-a3000/operator-rom
+python3 scripts/fsuae_m41.py prepare \
+  --rom /srv/unix-time-machine/media/amix-a3000/operator-rom \
+  --workspace /srv/unix-time-machine/staging/amix-m41-qualification
+DISPLAY=:0 python3 scripts/fsuae_m41.py qualify \
+  --workspace /srv/unix-time-machine/staging/amix-m41-qualification
+ss -ltnp
+sha256sum /srv/unix-time-machine/media/amix-a3000/operator-rom
+find /srv/unix-time-machine/media /srv/unix-time-machine/golden \
+  -printf '%M %u:%g %p\n'
+```
+
+Use the actual local display value rather than assuming `:0`. If the supplied
+ROM representation lawfully requires a key, install it under the same protected
+media directory with a noncanonical operator-chosen name and add `--rom-key`
+to `prepare`; no key name or hash is prescribed. Review `probe.json`, the
+rendered configuration, `fs-uae-diagnostics.log`, and `qualification.json`.
+Retain the workspace on every failure.
+
+Qualification evidence must distinguish configuration acceptance, emulator
+startup, logged topology, and guest-visible behavior. A native A3000 ROM screen
+must be checked by a human. Device visibility to AMIX is deferred to M4.2. No
+new TCP listener may appear. A controlled SIGTERM exit must complete. Reconcile
+this document with the resulting evidence before calling M4.1 complete.

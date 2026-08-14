@@ -42,9 +42,11 @@ class M40Tests(unittest.TestCase):
         self.assertEqual(manifest["status"], "defined")
         self.assertEqual(manifest["session"]["network"], "disabled")
         self.assertFalse(manifest["session"]["public_eligible"])
-        self.assertEqual(manifest["emulator"]["implementation"], "planned")
+        self.assertEqual(manifest["emulator"]["implementation"], "qualification-substrate-only")
         self.assertEqual(manifest["emulator"]["jit"], "disabled")
         self.assertTrue(manifest["canonical_target"]["result_qualification_required"])
+        self.assertEqual(manifest["milestones"]["m4.1"],
+                         "implemented-awaiting-real-host-qualification")
 
     def test_amix_media_are_logical_external_unpinned_without_names_or_hashes(self):
         manifest = self.manifest()
@@ -71,8 +73,11 @@ class M40Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             results = verify_media(SYSTEM, Path(directory))
         self.assertEqual(len(results), 6)
-        self.assertTrue(all(result.status == "MISSING" for result in results))
-        self.assertTrue(all("explicit external path" in result.detail for result in results))
+        required = [result for result in results if result.logical_name != "rom-key"]
+        self.assertTrue(all(result.status == "MISSING" for result in required))
+        self.assertTrue(all("explicit external path" in result.detail for result in required))
+        self.assertEqual(next(result for result in results if result.logical_name == "rom-key").status,
+                         "PASS")
 
     def test_backend_capabilities_describe_stdio_and_external_console_topologies(self):
         stdio = ConsoleTransport.stdio_pty().as_dict()

@@ -1,0 +1,23 @@
+[fs-uae]
+stdout = 1
+uaelog = 1
+amiga_model = A3000
+cpu = 68030
+mmu = 68030
+fpu = 68882
+chip_memory = 2048
+motherboard_ram = 16384
+jit_compiler = 0
+network_card = none
+bsdsocket_library = 0
+kickstart_file = @ROM@
+@ROM_KEY_OPTION@
+hard_drive_0 = @RDB@
+hard_drive_0_type = rdb
+hard_drive_0_controller = scsi6
+hard_drive_0_read_only = 0
+serial_port = @SERIAL_PTY@
+uae_uaehf1 = tape0,ro,:@TAPE_DIR@,0,0,0,512,0,,scsi4,SCSI1
+fullscreen = 0
+window_hidden = 0
+save_states = 0

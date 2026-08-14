@@ -88,7 +88,7 @@ class ProvisioningContractTests(unittest.TestCase):
     def test_implemented_system_media_directories_are_inventory_driven_and_protected(self):
         self.assertEqual(
             self.defaults["utm_implemented_systems"],
-            ["unix-v7-pdp11", "43bsd-vax"],
+            ["unix-v7-pdp11", "43bsd-vax", "amix-a3000"],
         )
         task = next(task for task in self.tasks
                     if task.get("name") == "Create protected per-system media directories")

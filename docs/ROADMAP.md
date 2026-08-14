@@ -113,9 +113,11 @@ limits were temporary; normal production broker defaults remain in force.
 
 ## M4 — AMIX / Amiga 3000
 M4 is incomplete. M4.0 establishes the conservative external-media contract
-and a backend-selected console/shutdown capability boundary. It implements no
-FS-UAE adapter, provisioning, configuration, installation, golden, or AMIX
-session. Later gates are M4.1 host/emulator qualification, M4.2 installation,
+and a backend-selected console/shutdown capability boundary. M4.1 is
+**IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION**: it pins/provisions Debian
+13 FS-UAE and supplies a non-AMIX A3000/RDB/tape/serial substrate probe. It
+implements no FS-UAE backend, installation, golden, or AMIX session. Later
+gates are M4.2 installation,
 M4.3 patched runtime/serial/halt qualification, M4.4 broker integration, and
 M4.5 complete real-host qualification. See `systems/amix-a3000/README.md`.
 

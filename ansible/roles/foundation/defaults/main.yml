@@ -11,8 +11,21 @@ utm_simh_vax_executable: "{{ utm_simh_prefix }}/vax780"
 utm_simh_provenance: "{{ utm_simh_prefix }}/PROVENANCE"
 utm_simh_archive: "/var/cache/unix-time-machine/simh-{{ utm_simh_commit }}.tar.gz"
 
+# Debian 13 (Trixie) amd64 main archive package. The digest is from Trixie's
+# binary-amd64 Packages index; provisioning still uses apt's signed metadata.
+utm_fsuae_package: fs-uae
+utm_fsuae_version: "3.1.66-2+b1"
+utm_fsuae_architecture: amd64
+utm_fsuae_suite: trixie
+utm_fsuae_component: main
+utm_fsuae_executable: /usr/bin/fs-uae
+utm_fsuae_deb_filename: pool/main/f/fs-uae/fs-uae_3.1.66-2+b1_amd64.deb
+utm_fsuae_deb_sha256: "5f703e361d242a99da46454a0b21aafed6010e4153682f1aeed9f59e5cd3d9e4"
+utm_fsuae_provenance: /opt/unix-time-machine/fs-uae/3.1.66-2+b1/PROVENANCE
+
 # Implemented system manifests whose protected canonical media publication
 # directories belong on every provisioned host. Planned systems are excluded.
 utm_implemented_systems:
   - unix-v7-pdp11
   - 43bsd-vax
+  - amix-a3000

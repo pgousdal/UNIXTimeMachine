@@ -13,6 +13,7 @@
       - ca-certificates
       - gcc
       - gzip
+      - iproute2
       - libc6-dev
       - make
       - python3
@@ -20,6 +21,55 @@
       - tar
     state: present
     update_cache: true
+
+- name: Require the qualified FS-UAE package architecture
+  ansible.builtin.assert:
+    that:
+      - ansible_architecture == "x86_64"
+    fail_msg: "M4.1 pins Debian 13 amd64 FS-UAE; qualify another architecture before broadening it."
+
+- name: Install the exact Debian 13 FS-UAE package
+  ansible.builtin.apt:
+    name: "{{ utm_fsuae_package }}={{ utm_fsuae_version }}"
+    state: present
+    update_cache: false
+
+- name: Create versioned FS-UAE provenance directory
+  ansible.builtin.file:
+    path: "{{ utm_fsuae_provenance | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Collect installed FS-UAE provenance
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ playbook_dir }}/../../scripts/fsuae_m41.py"
+      - provenance
+      - --expected-version
+      - "{{ utm_fsuae_version }}"
+      - --expected-architecture
+      - "{{ utm_fsuae_architecture }}"
+      - --suite
+      - "{{ utm_fsuae_suite }}"
+      - --component
+      - "{{ utm_fsuae_component }}"
+      - --deb-filename
+      - "{{ utm_fsuae_deb_filename }}"
+      - --deb-sha256
+      - "{{ utm_fsuae_deb_sha256 }}"
+  register: utm_fsuae_provenance_result
+  changed_when: false
+
+- name: Record exact installed FS-UAE provenance
+  ansible.builtin.copy:
+    content: "{{ utm_fsuae_provenance_result.stdout }}\n"
+    dest: "{{ utm_fsuae_provenance }}"
+    owner: root
+    group: root
+    mode: "0644"
 
 - name: Create controlled SIMH source cache
   ansible.builtin.file:
@@ -194,6 +244,7 @@
     - state
     - sessions
     - sessions/unix-v7-pdp11
+    - sessions/amix-a3000
     - snapshots
     - logs
     - reports

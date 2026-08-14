@@ -22,7 +22,15 @@ machine:
 emulator:
   family: fs-uae
   profile: a3000
-  implementation: planned
+  executable: /usr/bin/fs-uae
+  debian_package:
+    suite: trixie
+    component: main
+    architecture: amd64
+    name: fs-uae
+    version: 3.1.66-2+b1
+    deb_sha256: 5f703e361d242a99da46454a0b21aafed6010e4153682f1aeed9f59e5cd3d9e4
+  implementation: qualification-substrate-only
   jit: disabled
   rom: operator-supplied compatible A3000 Kickstart
 terminal:
@@ -80,3 +88,6 @@ session:
   reset_strategy: copy-on-session
   network: disabled
 status: defined
+milestones:
+  m4.0: complete
+  m4.1: implemented-awaiting-real-host-qualification

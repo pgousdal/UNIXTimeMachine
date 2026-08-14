@@ -131,6 +131,29 @@ Serial/getty readiness, patch, broker integration, and completion of the wider
 M4 track remain later gates. See
 `systems/amix-a3000/README.md`.
 
+The remaining M4 work is deliberately split into narrow, independently
+qualified gates:
+
+- **M4.4 — serial/getty qualification (NEXT; PLANNED).** Configure an AMIX
+  guest serial device, run `getty` on it, demonstrate bidirectional serial
+  communication, and reach a real AMIX `login:` prompt over serial. This is a
+  guest/emulator serial-path qualification only: it does not add broker
+  integration, a generic console interface, networking, patch installation, or
+  final exhibit qualification. The graphical/local display remains available
+  for workstation setup, observation, qualification, and fallback.
+- **M4.5 — brokered console/lifecycle integration (PLANNED).** Integrate the
+  qualified AMIX serial path with the existing local UTM broker, lifecycle,
+  transcript, and preservation-safe teardown model. This is the next step
+  toward one console abstraction spanning SIMH and other emulator backends; it
+  is not implemented by the roadmap.
+- **M4.6 — official patch variant (PLANNED).** Preserve an officially patched
+  AMIX installation as a documented derived variant whose parent is the
+  immutable AMIX 2.1 base. It must not replace or mutate that baseline.
+- **M4.7 — final AMIX exhibit qualification (PLANNED).** Qualify the complete
+  AMIX exhibit from preserved inputs through disposable runtime, including its
+  selected console and lifecycle behavior. M4 remains incomplete until this
+  final gate is complete.
+
 ## M5 — BBS door
 ANSI museum menu and system cards.
 
@@ -152,3 +175,152 @@ emulator qualification or bootability is established for them.
 | UNIX | `linux-m68k-atari` | Linux/m68k on Atari | Atari TT030 or Falcon | Not established |
 | Unixish | `freemint-atari` | FreeMiNT | Atari TT030 or Falcon | Not established |
 | Unixish | `minix-atari-st` | MINIX for Atari ST | Atari ST | Not established |
+
+---
+
+## Long-term UNIX Time Machine vision
+
+This section is **LONG-TERM VISION**, not a claim of implemented systems or
+interfaces. UNIX Time Machine should grow into a runnable preservation
+environment and interactive historical UNIX museum, not merely a collection of
+emulator configurations. Entries named here do not belong in the implemented
+runtime catalog until they have manifests, implementation, validation, and the
+appropriate qualification evidence.
+
+### Status discipline
+
+Roadmap and catalog work must keep these states distinct:
+
+- **COMPLETE / qualified:** implemented and exercised against the milestone's
+  stated qualification evidence.
+- **Implemented; qualification pending:** code or configuration exists, but the
+  required real-system or real-host evidence is incomplete.
+- **PLANNED:** bounded intended work, not implemented functionality.
+- **LONG-TERM VISION:** architectural direction or candidate exhibits without a
+  committed implementation milestone.
+
+A future-system list in this document must never make `utm catalog` report a
+system as implemented. UNIX V7/PDP-11/70 and 4.3BSD/VAX-11/780 remain complete;
+AMIX M4.1 through M4.3 remain complete according to their definitions, while
+M4 overall remains incomplete.
+
+### Preservation, variants, and lineage
+
+The durable preservation model is:
+
+```text
+source/install media
+        -> immutable original/base golden
+        -> optional documented derived/patched variants
+        -> disposable runtime sessions
+```
+
+Source media remain distinct from installed systems. An original/base golden
+is an immutable preserved baseline and must never become an ordinary mutable
+runtime disk. Runtime sessions use disposable copies. A historically meaningful
+change belongs in an optional derived variant, with its transformation and
+provenance documented, rather than silently changing or replacing the base.
+
+For example:
+
+```text
+AMIX 2.1 base
+        -> official patched AMIX variant
+```
+
+Long term, variant metadata should be machine-readable and identify the variant,
+its parent, source inputs, derivation steps, observed hashes, and qualification
+state. A derived variant is independently addressable; it does not rewrite its
+lineage.
+
+### Unified lifecycle and console architecture
+
+The long-term operator model should converge on concepts equivalent to:
+
+```text
+catalog -> prepare -> start -> ready -> console -> stop/discard
+```
+
+These are lifecycle concepts, not a promise that commands with those names
+exist. Any future CLI, museum frontend, or remote doorway must map onto the
+validated broker states and preservation-safe teardown rules rather than bypass
+them.
+
+Serial or terminal access should be the preferred generic interactive interface
+where historically and technically appropriate. Graphical/local display remains
+necessary for workstation systems, authentic graphical exhibits, installation
+and qualification, and fallback. M4.4 is the next concrete experiment; M4.5
+then connects its qualified AMIX serial path to the existing broker/lifecycle
+model. The intended result is a common console abstraction across SIMH and
+other emulator backends without treating emulator diagnostics or a graphical
+display as an authoritative serial console.
+
+### Networking boundary
+
+Networking remains disabled by default. Preservation, preparation, boot,
+console access, shutdown, and discard must not implicitly require guest
+networking or external connectivity. Future profiles may provide explicitly
+selected, isolated historical networks, private virtual LANs, and tightly
+controlled external access. Such profiles require their own policy,
+qualification, containment, and audit treatment; they do not weaken the
+offline baseline.
+
+### Interactive historical museum
+
+The long-term visitor experience may allow a person to browse exhibits by year,
+UNIX family, or machine; launch a disposable session; connect to its appropriate
+console; and safely discard it. Controlled sessions might eventually be exposed
+through SSH or a BBS/login-door frontend. These visitor interfaces and remote
+access paths are **LONG-TERM VISION** and do not exist merely because they are
+described here.
+
+### Historical catalog families
+
+Candidate exhibits should be curated by lineage and historical purpose rather
+than accumulated as a flat wishlist. Feasibility depends on recoverable media,
+legal availability, emulator fidelity, and the ability to qualify a safe
+disposable lifecycle.
+
+- **Research UNIX:** early Research UNIX where recoverable and emulatable; V6;
+  V7; 32V.
+- **BSD:** early PDP-11 BSD where feasible; 4BSD, 4.2BSD, and 4.3BSD; 386BSD;
+  FreeBSD; NetBSD; OpenBSD.
+- **AT&T/System V:** representative System III and System V releases; SVR2,
+  SVR3, and SVR4 where feasible; AMIX.
+- **Commercial/workstation UNIX:** SunOS; Solaris; Ultrix; Tru64; IRIX; HP-UX;
+  AIX; NeXTSTEP/OpenStep where appropriate.
+- **PC UNIX:** Xenix; SCO UNIX/OpenServer; UnixWare; Interactive UNIX; Solaris
+  x86 where historically useful.
+- **UNIX-like, educational, and descendants:** MINIX; Coherent; historically
+  significant early Linux releases and distributions. Plan 9 and Inferno are
+  post-UNIX Bell Labs descendants and must be labeled as such, not presented as
+  UNIX systems.
+
+### Machine and architecture history
+
+The museum preserves meaningful machine/OS combinations, not simply each OS on
+the easiest available emulator. Primary examples include:
+
+- UNIX V7 on PDP-11;
+- 4.xBSD on VAX;
+- AMIX on Amiga 3000;
+- SunOS/Solaris on Sun hardware and SPARC where feasible;
+- IRIX on SGI/MIPS;
+- Ultrix on DEC systems; and
+- NeXTSTEP on NeXT/m68k as an important primary exhibit.
+
+Multiple ports of systems such as NetBSD, MINIX, or Debian can be separate
+exhibits when the machine/OS combination itself tells a significant historical
+story. Authenticity notes should distinguish primary historical combinations,
+later ports, practical substitutions, and emulator limitations.
+
+### Museum and catalog metadata
+
+The long-term catalog model should be able to describe, without implying
+qualification: year; UNIX family and lineage; OS and release; emulated machine;
+architecture; emulator/backend; preservation and media status; golden or
+variant identity and parentage; qualification status; console capabilities;
+and networking capabilities. Museum cards can add historical significance,
+suggested interactions, and authenticity notes while the machine-readable
+catalog remains the authority for implemented availability and lifecycle
+capabilities.

@@ -45,8 +45,7 @@ class M40Tests(unittest.TestCase):
         self.assertEqual(manifest["emulator"]["implementation"], "qualification-substrate-only")
         self.assertEqual(manifest["emulator"]["jit"], "disabled")
         self.assertTrue(manifest["canonical_target"]["result_qualification_required"])
-        self.assertEqual(manifest["milestones"]["m4.1"],
-                         "implemented-awaiting-real-host-qualification")
+        self.assertEqual(manifest["milestones"]["m4.1"], "complete")
 
     def test_amix_media_are_logical_external_unpinned_without_names_or_hashes(self):
         manifest = self.manifest()

@@ -1,9 +1,9 @@
 # AMIX 2.1 / Amiga 3000 — M4 design and M4.1 qualification contract
 
 M4 is incomplete. M4.0 defines historical/media and backend architecture.
-M4.1 implements a Debian 13 FS-UAE provisioning and non-AMIX hardware probe,
-but awaits real-host qualification. There is no FS-UAE backend, AMIX installer,
-golden, or qualified AMIX console path in this repository.
+M4.1 is **COMPLETE**: Debian 13 FS-UAE provisioning and the non-AMIX hardware
+substrate passed real-host qualification. There is no FS-UAE backend, AMIX
+installer, golden, or qualified AMIX console path in this repository.
 
 ## Evidence classification
 
@@ -74,14 +74,14 @@ system and real-host evidence.
 
 ## Qualification gates
 
-- **M4.1 — IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION:** Debian 13 amd64
+- **M4.1 — COMPLETE:** Debian 13 amd64
   `fs-uae=3.1.66-2+b1` from Trixie `main` is pinned. The signed archive index
   identifies `pool/main/f/fs-uae/fs-uae_3.1.66-2+b1_amd64.deb` with SHA-256
   `5f703e361d242a99da46454a0b21aafed6010e4153682f1aeed9f59e5cd3d9e4`.
   Provisioning records installed dependency versions, apt policy, version
   output, and executable hash. The launcher and network helpers are absent.
-  The probe must still qualify A3000 startup, MMU/FPU, RDB, tape, ROM, serial
-  PTY, controlled exit, and display behavior on the Debian host.
+  Real-host qualification confirmed A3000 startup, MMU/FPU, memory, RDB, tape,
+  ROM loading, local serial PTY attachment, controlled exit, and local display.
 - **M4.2:** observed media labels/names/hashes; tape representation and order;
   successful install; exact RDB geometry and partition layout.
 - **M4.3:** official patch procedure and resulting identity; exact serial
@@ -151,16 +151,57 @@ forms in the current run: explicit RDB type, `rdb mode: 1`, the literal
 opened, size=<expected>K mode=3 empty=0` line. The independent A3000 mainboard
 SCSI HD-unit-6 predicate remains required.
 
-The Debian binary links SDL/OpenGL/X11 libraries. Xvfb `:99` with llvmpipe was
-observed to start it successfully on the headless qualification host, with no
-new TCP listener. This is an observed local-only display candidate, not a
-universal FS-UAE requirement. M4.1 therefore does not add Xvfb to every host's
-foundation provisioning: a host with a real local X display does not need it,
-and the corrected real-host rerun must still qualify the complete topology.
-Missing `DISPLAY` remains HUMAN_REQUIRED, not PASS. Install/provision Xvfb as a
-qualification-host prerequisite only where that host has no local display.
+The Debian binary links SDL/OpenGL/X11 libraries. Xvfb `:99` with `-nolisten
+tcp` and llvmpipe started it successfully on the headless qualification host,
+with no new TCP listener. This is an observed local-only display candidate,
+not a universal FS-UAE requirement. M4.1 therefore does not add Xvfb to every
+host's foundation provisioning: a host with a real local X display does not
+need it. Missing `DISPLAY` remains HUMAN_REQUIRED, not PASS. Install/provision
+Xvfb as a qualification-host prerequisite only where that host has no local
+display.
 
-## Exact M4.1 real-host procedure
+## M4.1 final real-host qualification record
+
+The Debian 13/Trixie amd64 host passed two provisioning runs; the second
+reported `changed=0`. The installed dependency and observed executable were:
+
+- Debian package `fs-uae=3.1.66-2+b1` from Trixie `main`.
+- Executable SHA-256
+  `7349ac3aed9a61e81254b81d1b2bf58ea9aa5bc0bbe00fc3f9e4845beafd568d`.
+- Archive package SHA-256
+  `5f703e361d242a99da46454a0b21aafed6010e4153682f1aeed9f59e5cd3d9e4`.
+
+The protected, operator-supplied inputs were observed as UNPINNED provenance,
+not canonical identities:
+
+- ROM SHA-256
+  `3cd65ab48bad3238e63f4da4df59fac187ecbbc45b48fdfd78d360133113ddaf`.
+- ROM-key SHA-256
+  `f3b3b35593fef9a677225f559f8155e2b5d97b5bbfb2ccf24ee93738124d9a71`.
+
+The run result recorded `configuration_accepted=true`,
+`controlled_exit_code=0`, `new_tcp_listeners=[]`, and
+`topology_evidence_missing=[]`. Run-scoped evidence passed for:
+
+- A3000; 68030 CPU, 68882 FPU, 68030 MMU, and JIT disabled.
+- 2 MiB Chip RAM and 16 MiB A3000 motherboard RAM.
+- A3000 mainboard SCSI initialization; the disposable RDB hardfile opened on
+  HD unit 6.
+- SCSI tape unit 4 and the synthetic ordered tape index.
+- The local serial PTY configured and opened.
+- An `AMIROMTYPE1` encrypted source, exact protected key path in the generated
+  configuration, exact ROM path read, and a 524288-byte Kickstart load.
+- Runtime ROM SHA-1
+  `864bf136c5997d9c0c9fa89ce62249364bb19859`, recorded as an observation.
+- Literal FS-UAE classification `Unknown ROM`; no internal identity is claimed.
+- Clean SDL shutdown.
+
+Bidirectional serial bytes remain **SKIP** until an AMIX guest serial driver and
+getty exist. No guest networking, public display, TCP serial transport, or
+public listener was introduced. All earlier failed qualification workspaces
+and logs remain preservation evidence.
+
+## M4.1 reproduction procedure
 
 On the Debian 13 amd64 qualification host:
 
@@ -194,8 +235,7 @@ assumed equivalent until observed. Use a new staging workspace so evidence from
 the false-negative run remains intact. Review `probe.json` and every file in
 the new `runs/run-*` directory. Retain every workspace on failure.
 
-Qualification evidence must distinguish configuration acceptance, emulator
-startup, logged topology, and guest-visible behavior. A native A3000 ROM screen
-must be checked by a human. Device visibility to AMIX is deferred to M4.2. No
-new TCP listener may appear. A controlled SIGTERM exit must complete. Reconcile
-this document with the resulting evidence before calling M4.1 complete.
+Qualification evidence distinguishes configuration acceptance, emulator
+startup, logged topology, and guest-visible behavior. Device visibility to
+AMIX is deferred to M4.2. No new TCP listener may appear, and a controlled
+SIGTERM exit must complete.

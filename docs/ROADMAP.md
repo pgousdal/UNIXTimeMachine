@@ -114,12 +114,11 @@ limits were temporary; normal production broker defaults remain in force.
 ## M4 — AMIX / Amiga 3000
 M4 is incomplete. M4.0 establishes the conservative external-media contract
 and a backend-selected console/shutdown capability boundary. M4.1 is
-**IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION**: it pins/provisions Debian
-13 FS-UAE and supplies a non-AMIX A3000/RDB/tape/serial substrate probe. It
-now captures a run-scoped detailed UAE log after reconciling a sparse-stdout
-false negative; the corrected harness still requires a real-host rerun. It
-implements no FS-UAE backend, installation, golden, or AMIX session. Later
-gates are M4.2 installation,
+**COMPLETE**: Debian 13 provisioning was idempotent and the pinned FS-UAE
+3.1.66 build passed the non-AMIX A3000/RDB/tape/serial substrate qualification
+with run-scoped evidence and no new TCP listener. Bidirectional guest serial
+traffic remains deferred until AMIX exists. M4.1 implements no FS-UAE backend,
+installation, golden, or AMIX session. Later gates are M4.2 installation,
 M4.3 patched runtime/serial/halt qualification, M4.4 broker integration, and
 M4.5 complete real-host qualification. See `systems/amix-a3000/README.md`.
 

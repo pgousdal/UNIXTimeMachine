@@ -90,4 +90,4 @@ session:
 status: defined
 milestones:
   m4.0: complete
-  m4.1: implemented-awaiting-real-host-qualification
+  m4.1: complete

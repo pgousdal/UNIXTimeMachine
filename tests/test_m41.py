@@ -143,23 +143,33 @@ class M41Tests(unittest.TestCase):
             'set option "a3000mem_size" to "16" (result: 1)',
             "CPU=68030, FPU=68882, MMU=68030, JIT=0.",
             "Initializing A3000 mainboard SCSI",
+            "hard drive type explicitly set to rdb", "rdb mode: 1",
             f"Adding A3000 mainboard SCSI HD unit 6 ({rdb})",
-            "HDF opened as 1024K",
+            f"hfd open: '{rdb}'",
+            f"HDF '{rdb}' opened, size=1024K mode=3 empty=0",
             f"Adding A3000 mainboard SCSI TAPE unit 4 ({tape})",
             f"TAPEEMU INDEX: '{tape}/index.tape'",
             f"serial port device: {slave}",
             f"serial: open '{slave}' -> fd=22",
+            f"read_rom_name {rom}",
+            "ROM: SHA1=864bf136c5997d9c0c9fa89ce62249364bb19859",
             f"Unknown ROM '{rom}' loaded", "SDL_QUIT",
         ))
+
+    def evidence_files(self, stdout=""):
+        detailed = self.workspace / "current-fs-uae.log.txt"
+        detailed.write_text(self.detailed_log())
+        stdout_path = self.workspace / "fs-uae-stdout.log"
+        stdout_path.write_text(stdout)
+        return detailed, stdout_path, self.workspace / "m41-probe.fs-uae"
 
     def test_sparse_diagnostics_and_complete_current_detailed_log_pass(self):
         self.prepare()
         metadata = json.loads((self.workspace / "probe.json").read_text())
-        detailed = self.workspace / "current-fs-uae.log.txt"
         boundary = os.stat(self.workspace).st_mtime_ns
-        detailed.write_text(self.detailed_log())
+        detailed, stdout, config = self.evidence_files()
         evidence, missing = fsuae_m41.validate_run_log(
-            detailed, boundary, metadata, "/dev/pts/10")
+            detailed, stdout, config, boundary, metadata, "/dev/pts/10")
         self.assertEqual(missing, [])
         self.assertTrue(evidence["rdb_hd_unit_6"])
         self.assertTrue(evidence["serial_opened"])
@@ -171,27 +181,79 @@ class M41Tests(unittest.TestCase):
         metadata = json.loads((self.workspace / "probe.json").read_text())
         detailed = self.workspace / "fs-uae.log.txt"
         detailed.write_text('config match for "A3000"\n')
+        stdout = self.workspace / "fs-uae-stdout.log"; stdout.write_text("")
+        config = self.workspace / "m41-probe.fs-uae"
         _, missing = fsuae_m41.validate_run_log(
-            detailed, 0, metadata, "/dev/pts/10")
+            detailed, stdout, config, 0, metadata, "/dev/pts/10")
         self.assertIn("cpu_fpu_mmu_jit", missing)
         future_boundary = detailed.stat().st_mtime_ns + 1
         with self.assertRaisesRegex(UTMError, "predates the current run boundary"):
             fsuae_m41.validate_run_log(
-                detailed, future_boundary, metadata, "/dev/pts/10")
+                detailed, stdout, config, future_boundary, metadata, "/dev/pts/10")
 
-    def test_encrypted_unknown_rom_records_decode_without_identity_claim(self):
+    def test_encrypted_unknown_rom_records_attested_load_without_identity_claim(self):
+        encrypted = self.media / "operator-selected-encrypted-rom"
+        encrypted.write_bytes(b"AMIROMTYPE1" + b"synthetic encrypted payload")
+        encrypted.chmod(0o440)
         key = self.media / "operator-selected-key"
         key.write_bytes(b"synthetic test key, not historical media")
         key.chmod(0o440)
-        self.prepare(rom_key=str(key))
+        self.prepare(rom=str(encrypted), rom_key=str(key))
         metadata = json.loads((self.workspace / "probe.json").read_text())
-        detailed = self.workspace / "fs-uae.log.txt"
-        detailed.write_text("read rom key file, size = 2069\n" + self.detailed_log())
+        detailed, stdout, config = self.evidence_files(
+            "UAE: KS ROM 2cf0789e (524288 bytes)\n")
         evidence, missing = fsuae_m41.validate_run_log(
-            detailed, 0, metadata, "/dev/pts/10")
+            detailed, stdout, config, 0, metadata, "/dev/pts/10")
         self.assertEqual(missing, [])
-        self.assertTrue(evidence["encrypted_rom_decoded_loaded"])
+        self.assertTrue(evidence["encrypted_source_amiromtype1"])
+        self.assertTrue(evidence["encrypted_rom_key_configured"])
+        self.assertTrue(evidence["encrypted_rom_loaded_512k"])
         self.assertTrue(evidence["rom_identity_unknown"])
+
+    def test_rdb_and_encrypted_rom_attestation_failures_remain_closed(self):
+        encrypted = self.media / "operator-selected-encrypted-rom"
+        encrypted.write_bytes(b"AMIROMTYPE1" + b"synthetic encrypted payload")
+        encrypted.chmod(0o440)
+        key = self.media / "operator-selected-key"
+        key.write_bytes(b"synthetic test key, not historical media")
+        key.chmod(0o440)
+        self.prepare(rom=str(encrypted), rom_key=str(key))
+        metadata = json.loads((self.workspace / "probe.json").read_text())
+        complete = self.detailed_log()
+        stdout_text = "UAE: KS ROM 2cf0789e (524288 bytes)\n"
+
+        cases = {
+            "missing RDB open": (complete.replace("hfd open:", "hfd absent:"),
+                                 stdout_text, None, "rdb_opened"),
+            "missing configured key": (complete, stdout_text,
+                                       "kickstart_key_file", "encrypted_rom_key_configured"),
+            "missing runtime ROM load": (complete.replace("Unknown ROM", "ROM absent"),
+                                         stdout_text, None, "rom_loaded"),
+        }
+        for name, (log_text, out_text, remove_config_line, expected) in cases.items():
+            with self.subTest(name=name):
+                detailed = self.workspace / f"{name.replace(' ', '-')}.log"
+                detailed.write_text(log_text)
+                stdout = self.workspace / f"{name.replace(' ', '-')}.stdout"
+                stdout.write_text(out_text)
+                config = self.workspace / f"{name.replace(' ', '-')}.fs-uae"
+                config_text = (self.workspace / "m41-probe.fs-uae").read_text()
+                if remove_config_line:
+                    config_text = "\n".join(
+                        line for line in config_text.splitlines()
+                        if remove_config_line not in line)
+                config.write_text(config_text)
+                _, missing = fsuae_m41.validate_run_log(
+                    detailed, stdout, config, 0, metadata, "/dev/pts/10")
+                self.assertIn(expected, missing)
+
+        encrypted.chmod(0o640)
+        encrypted.write_bytes(b"NOTAMIROM1" + b"synthetic encrypted payload")
+        encrypted.chmod(0o440)
+        detailed, stdout, config = self.evidence_files(stdout_text)
+        _, missing = fsuae_m41.validate_run_log(
+            detailed, stdout, config, 0, metadata, "/dev/pts/10")
+        self.assertIn("encrypted_source_amiromtype1", missing)
 
     def test_provenance_fails_closed_off_debian_13(self):
         args = Namespace(expected_version="3.1.66-2+b1", expected_architecture="amd64",

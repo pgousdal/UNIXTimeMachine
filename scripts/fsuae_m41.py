@@ -166,8 +166,9 @@ def listening_tcp() -> set[str]:
     return set(result.stdout.splitlines())
 
 
-def runtime_evidence(text: str, metadata: dict, slave_path: str) -> dict[str, bool]:
-    """Evaluate only detailed UAE output produced by the current run."""
+def runtime_evidence(text: str, stdout_text: str, config_text: str,
+                     metadata: dict, slave_path: str) -> dict[str, bool]:
+    """Evaluate preserved current-run logs, config, and immutable source metadata."""
     rdb = re.escape(str(Path(metadata["probe_rdb"]).resolve()))
     tape = re.escape(str(Path(metadata["synthetic_tape"]).resolve()))
     index = re.escape(str((Path(metadata["synthetic_tape"]) / "index.tape").resolve()))
@@ -182,7 +183,11 @@ def runtime_evidence(text: str, metadata: dict, slave_path: str) -> dict[str, bo
                                 r"set option [\"']a3000mem_size[\"'] to [\"']16[\"'])"),
         "a3000_scsi": r"Initializing A3000 mainboard SCSI",
         "rdb_hd_unit_6": rf"Adding A3000 mainboard SCSI HD unit 6 .*{rdb}",
-        "rdb_opened": rf"HDF opened as {rdb_kib}K\b",
+        "rdb_opened": (
+            rf"(?s)hard drive type explicitly set to rdb.*"
+            rf"rdb mode:\s*1.*hfd open:\s*['\"]{rdb}['\"].*"
+            rf"HDF ['\"]{rdb}['\"] opened,\s*size={rdb_kib}K\s+"
+            rf"mode=3\s+empty=0"),
         "tape_unit_4": rf"Adding A3000 mainboard SCSI TAPE unit 4 .*{tape}",
         "tape_index_opened": rf"TAPEEMU INDEX:\s*['\"]?{index}['\"]?",
         "serial_device": rf"serial port device:\s*{serial}",
@@ -197,22 +202,40 @@ def runtime_evidence(text: str, metadata: dict, slave_path: str) -> dict[str, bo
     evidence["rom_identity_unknown"] = re.search(
         rf"Unknown ROM ['\"]{rom}['\"] loaded", text, re.IGNORECASE) is not None
     if "rom_key" in metadata["artifacts"]:
-        evidence["encrypted_rom_key_loaded"] = re.search(
-            r"read rom key file, size\s*=\s*\d+", text, re.IGNORECASE) is not None
-        evidence["encrypted_rom_decoded_loaded"] = (
-            evidence["encrypted_rom_key_loaded"] and
-            evidence["rom_loaded"])
+        rom_path = Path(metadata["artifacts"]["rom"]["path"])
+        key = str(Path(metadata["artifacts"]["rom_key"]["path"]).resolve())
+        try:
+            with rom_path.open("rb") as stream:
+                evidence["encrypted_source_amiromtype1"] = (
+                    stream.read(11) == b"AMIROMTYPE1")
+        except OSError:
+            evidence["encrypted_source_amiromtype1"] = False
+        evidence["encrypted_rom_key_configured"] = any(
+            line.strip() == f"kickstart_key_file = {key}"
+            for line in config_text.splitlines())
+        evidence["encrypted_rom_read_requested"] = re.search(
+            rf"read_rom_name.*{rom}", text, re.IGNORECASE) is not None
+        evidence["encrypted_rom_sha1_observed"] = re.search(
+            r"ROM:\s*SHA1=[0-9a-f]{40}\b", text, re.IGNORECASE) is not None
+        evidence["encrypted_rom_loaded_512k"] = (
+            evidence["rom_loaded"] and re.search(
+                r"UAE:\s*KS ROM [0-9a-f]+ \(524288 bytes\)",
+                stdout_text, re.IGNORECASE) is not None)
     return evidence
 
 
-def validate_run_log(log_path: Path, run_started_ns: int, metadata: dict,
+def validate_run_log(log_path: Path, stdout_path: Path, config_path: Path,
+                     run_started_ns: int, metadata: dict,
                      slave_path: str) -> tuple[dict[str, bool], list[str]]:
     if not log_path.is_file():
         raise UTMError("current run did not create its detailed UAE log")
     if log_path.stat().st_mtime_ns < run_started_ns:
         raise UTMError("detailed UAE log predates the current run boundary")
-    evidence = runtime_evidence(log_path.read_text(errors="replace"), metadata, slave_path)
-    informational = {"rom_identity_unknown", "encrypted_rom_key_loaded"}
+    evidence = runtime_evidence(
+        log_path.read_text(errors="replace"),
+        stdout_path.read_text(errors="replace"),
+        config_path.read_text(errors="replace"), metadata, slave_path)
+    informational = {"rom_identity_unknown"}
     missing = [name for name, present in evidence.items()
                if not present and name not in informational]
     return evidence, missing
@@ -269,7 +292,7 @@ def qualify(args) -> int:
         os.close(master)
         os.close(slave)
     evidence, missing = validate_run_log(
-        detailed_log, run_started_ns, metadata, slave_path)
+        detailed_log, stdout_log, config, run_started_ns, metadata, slave_path)
     diagnostic_text = stdout_log.read_text(errors="replace") + "\n" + (
         stderr_log.read_text(errors="replace"))
     network_warning = "Unrecognized network card" in diagnostic_text or (
@@ -284,6 +307,10 @@ def qualify(args) -> int:
         "display_classification": "observed-local-display-candidate",
         "runtime_evidence": evidence,
         "rom_identity": "Unknown ROM" if evidence["rom_identity_unknown"] else "not-asserted",
+        "rom_runtime_sha1": (re.search(
+            r"ROM:\s*SHA1=([0-9a-f]{40})\b",
+            detailed_log.read_text(errors="replace"), re.IGNORECASE).group(1).lower()
+            if evidence.get("encrypted_rom_sha1_observed") else None),
         "new_tcp_listeners": [],
         "run_directory": str(run_dir),
         "run_started_ns": run_started_ns,

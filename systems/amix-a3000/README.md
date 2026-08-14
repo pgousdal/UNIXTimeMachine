@@ -135,10 +135,21 @@ log to show the A3000 match, CPU/FPU/MMU/JIT values, translated 2 MiB Chip and
 opened as HD unit 6, tape unit 4 and its exact index, and the allocated serial
 PTY actually opened. Clean SDL shutdown is also required.
 
-The observed encrypted Amiga Forever ROM was decoded and loaded after its key
-was read, but FS-UAE classified it only as `Unknown ROM`. Qualification records
-that literal classification and the observed external-media hash; it does not
-invent an internal ROM identity.
+The observed external Amiga Forever ROM begins with `AMIROMTYPE1`, and the
+generated run configuration explicitly supplies the protected key path. The
+runtime log records the exact ROM path being read, its observed SHA-1, and
+`Unknown ROM '<path>' loaded`; run-specific stdout records a 524288-byte
+Kickstart load. Together these attest successful loading of the encrypted
+source with the configured key. They do not attest an explicit key-open or
+decrypt message, because FS-UAE emitted neither, and they do not establish an
+internal ROM identity. The qualifier records the literal `Unknown ROM`
+classification and runtime SHA-1 only as observations.
+
+For the RDB probe, successful opening requires all observed pinned-emulator
+forms in the current run: explicit RDB type, `rdb mode: 1`, the literal
+`hfd open:` line for the exact probe path, and the corresponding `HDF '<path>'
+opened, size=<expected>K mode=3 empty=0` line. The independent A3000 mainboard
+SCSI HD-unit-6 predicate remains required.
 
 The Debian binary links SDL/OpenGL/X11 libraries. Xvfb `:99` with llvmpipe was
 observed to start it successfully on the headless qualification host, with no

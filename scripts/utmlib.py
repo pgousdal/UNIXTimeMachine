@@ -164,7 +164,8 @@ def import_golden(system_id: str, source: Path, host_root: Path) -> tuple[Path, 
     if not source.is_dir():
         raise UTMError("golden import source must be a staging directory containing the complete disk set")
     disks = prepared_disks(manifest)
-    sources = [(disk, source / disk["golden_filename"]) for disk in disks]
+    sources = [(disk, source / disk.get("source_filename", disk["golden_filename"]))
+               for disk in disks]
     missing = [str(path) for _, path in sources if not path.is_file()]
     if missing:
         raise UTMError("incomplete staging disk set; missing: " + ", ".join(missing))

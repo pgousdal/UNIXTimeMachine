@@ -66,9 +66,9 @@ and was unchanged after two disposable-session qualifications. Failed session
 and timeout evidence remains preserved; no automatic evidence deletion was
 introduced.
 
-## Planned M4 AMIX boundary
+## M4 AMIX boundary
 
-M4.0 defines, but does not execute, this flow: external immutable boot/root and
+M4 defines this flow: external immutable boot/root and
 patch floppies, an ordered installation-tape representation, and an A3000 ROM
 become inputs to private installation staging; only the installed RDB hardfile
 may proceed to an immutable golden and disposable session copy. Floppies must
@@ -76,7 +76,10 @@ be writable private copies during installation. Tape and ROM attachments must
 be enforced read-only or replaced with private staging copies.
 
 AMIX media are external, operator-supplied and UNPINNED. No repository evidence
-currently authorizes canonical filenames, labels, member ordering, sizes or
-hashes. The future golden must contain only the installed hardfile and golden
-metadata, never installation media, ROM material, keys, or installation
-configuration. This is a planned contract, not an implemented AMIX importer.
+authorizes canonical source-media filenames, labels, member ordering, sizes or
+hashes. The implemented generic prepared-disk contract accepts only
+`base-amix-2.1-installation-staging.hdf` as installed-system input and publishes
+it as `amix-system.hdf`. The golden contains only that hardfile and metadata,
+never installation media, ROM material, keys, or installation configuration.
+Real publication remains an explicit operator action after base-install
+qualification and is not performed by repository validation.

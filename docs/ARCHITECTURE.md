@@ -138,7 +138,9 @@ M1 data flow is `external media -> operator staging disk set -> atomic read-only
 golden disk set -> complete disposable session disk set`. UNIX V7 has two RP06
 members: RP0 (root and swap) and RP1 (`/usr`). The manifest's ordered
 `prepared.disks` structure is system-neutral and records each unit, device,
-golden/session filename, and runtime token. Golden import constructs the whole
+golden/session filename, and runtime token. An optional `source_filename`
+separates a qualified staging output name from its stable golden name; when
+absent it defaults to `golden_filename` for existing systems. Golden import constructs the whole
 set in a sibling transaction directory, hashes every member, and publishes it
 with one rename. Before publication, the complete tree is set to root ownership,
 the `unix-time-machine` operator group, mode 0750 on its directory, and mode 0440

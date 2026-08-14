@@ -7,6 +7,7 @@ from unittest import mock
 import yaml
 
 from scripts import amix_m42
+from scripts import utmlib
 from scripts.utmlib import UTMError, sha256
 
 
@@ -54,6 +55,88 @@ class M42Tests(unittest.TestCase):
 
     def make_inventory(self):
         return amix_m42.inventory_amix(self.spec, self.inventory, self.root)
+
+    def import_synthetic_golden(self, source_bytes=b"synthetic installed AMIX RDB"):
+        staging = self.root / "staging/amix-m42-base-install"
+        staging.mkdir(parents=True)
+        source = staging / "base-amix-2.1-installation-staging.hdf"
+        source.write_bytes(source_bytes)
+        with mock.patch.object(utmlib, "golden_group_id", return_value=4242), \
+             mock.patch.object(utmlib.os, "chown"):
+            destination, methods = utmlib.import_golden("amix-a3000", staging, self.root)
+        return staging, source, destination, methods
+
+    def test_manifest_exposes_installed_rdb_prepared_disk_contract(self):
+        manifest = yaml.safe_load((ROOT / "systems/amix-a3000/system.yml").read_text())
+        self.assertEqual(manifest["prepared"]["disks"], [{
+            "id": "system", "unit": "scsi6", "device": "RDB hardfile",
+            "source_filename": "base-amix-2.1-installation-staging.hdf",
+            "golden_filename": "amix-system.hdf", "session_filename": "amix-system.hdf",
+            "runtime_token": "@SESSION_RDB@",
+        }])
+        self.assertEqual(utmlib.prepared_disks(manifest), manifest["prepared"]["disks"])
+
+    def test_synthetic_installed_rdb_import_records_identity_and_preserves_bytes(self):
+        staging, source, golden, methods = self.import_synthetic_golden()
+        self.assertTrue(methods)
+        imported = golden / "amix-system.hdf"
+        self.assertEqual(imported.read_bytes(), source.read_bytes())
+        self.assertEqual(sha256(imported), sha256(source))
+        metadata = json.loads((golden / "metadata.json").read_text())
+        self.assertEqual(metadata["system_id"], "amix-a3000")
+        self.assertEqual(metadata["source_path"], str(staging.resolve()))
+        self.assertEqual(metadata["disks"]["system"], {
+            "filename": "amix-system.hdf", "sha256": sha256(source),
+        })
+
+    def test_import_requires_exact_canonical_staging_hdf_name(self):
+        staging = self.root / "staging/amix-m42-base-install"
+        staging.mkdir(parents=True)
+        (staging / "some-other-installed.hdf").write_bytes(b"decoy")
+        with self.assertRaisesRegex(UTMError, "incomplete staging disk set.*base-amix"):
+            utmlib.import_golden("amix-a3000", staging, self.root)
+        self.assertFalse((self.root / "golden/amix-a3000").exists())
+
+    def test_import_excludes_install_media_rom_key_and_configuration(self):
+        staging = self.root / "staging/amix-m42-base-install"
+        staging.mkdir(parents=True)
+        expected = staging / "base-amix-2.1-installation-staging.hdf"
+        expected.write_bytes(b"installed RDB only")
+        for name in ("boot-floppy.staging", "root-install-floppy.staging", "installation-tape.staging",
+                     "operator-rom", "operator-rom-key", "install.fs-uae", "install.json"):
+            path = staging / name
+            if name == "installation-tape.staging":
+                path.mkdir(); (path / "member").write_bytes(b"tape")
+            else:
+                path.write_bytes(name.encode())
+        with mock.patch.object(utmlib, "golden_group_id", return_value=4242), \
+             mock.patch.object(utmlib.os, "chown"):
+            golden, _ = utmlib.import_golden("amix-a3000", staging, self.root)
+        self.assertEqual({path.name for path in golden.iterdir()},
+                         {"amix-system.hdf", "metadata.json"})
+        self.assertEqual((golden / "amix-system.hdf").read_bytes(), b"installed RDB only")
+
+    def test_synthetic_amix_golden_prepares_copy_on_session(self):
+        _, source, golden, _ = self.import_synthetic_golden()
+        before = sha256(golden / "amix-system.hdf")
+        workspace, methods = utmlib.prepare_session(
+            "amix-a3000", "synthetic-amix-session", self.root)
+        session_disk = workspace / "amix-system.hdf"
+        self.assertTrue(methods)
+        self.assertEqual(session_disk.read_bytes(), source.read_bytes())
+        session_disk.write_bytes(b"session changed")
+        self.assertEqual(sha256(golden / "amix-system.hdf"), before)
+
+    def test_existing_complete_system_disk_contracts_are_unchanged(self):
+        expected = {
+            "unix-v7-pdp11": [("rp0.dsk", "rp0.dsk"), ("rp1.dsk", "rp1.dsk")],
+            "43bsd-vax": [("rq0.dsk", "rq0.dsk")],
+        }
+        for system_id, names in expected.items():
+            manifest = yaml.safe_load((ROOT / f"systems/{system_id}/system.yml").read_text())
+            disks = manifest["prepared"]["disks"]
+            self.assertEqual([(disk.get("source_filename", disk["golden_filename"]),
+                               disk["golden_filename"]) for disk in disks], names)
 
     def test_inventory_records_observed_names_hashes_descriptions_and_exact_order(self):
         self.make_inventory()
@@ -183,7 +266,7 @@ class M42Tests(unittest.TestCase):
         self.assertEqual(amix["status"], "defined")
         self.assertEqual(amix["milestones"]["m4.1"], "complete")
         self.assertEqual(amix["milestones"]["m4.2"],
-                         "implemented-awaiting-real-host-qualification")
+                         "base-install-qualified-awaiting-golden-publication")
 
 
 if __name__ == "__main__":

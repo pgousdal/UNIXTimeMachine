@@ -1,10 +1,12 @@
-# AMIX 2.1 / Amiga 3000 — M4 design and M4.1 qualification contract
+# AMIX 2.1 / Amiga 3000 — M4 qualification contract
 
 M4 is incomplete. M4.0 defines historical/media and backend architecture.
 M4.1 is **COMPLETE**: Debian 13 FS-UAE provisioning and the non-AMIX hardware
-substrate passed real-host qualification. There is no FS-UAE backend, AMIX
-golden, or qualified AMIX console path in this repository. M4.2 media inventory
-and base-install staging are implemented but await a real operator-media run.
+substrate passed real-host qualification. The M4.2 real-host base installation
+has now passed first boot, root login, filesystem/swap verification, and clean
+System V shutdown. The golden-import contract is implemented, but no AMIX
+golden has been published and there is no FS-UAE session backend or qualified
+AMIX broker console path in this repository.
 
 ## Evidence classification
 
@@ -54,11 +56,13 @@ semantics; if a future backend cannot guarantee that, it must use private
 staging copies. Source hashes are recorded as observed UNPINNED provenance, not
 authenticity claims.
 
-The future golden contains only the installed system hardfile and golden
-metadata. Golden publication must reject installation and patch floppies, tape
-members or containers, ROMs, ROM keys, and rendered installation configuration.
-M4.0 adds no AMIX golden-import special case because no installed-disk contract
-has been qualified.
+The golden contains only the installed system hardfile and canonical golden
+metadata. The generic prepared-disk contract selects the exact staging file
+`base-amix-2.1-installation-staging.hdf`, publishes it as `amix-system.hdf`,
+and does not copy installation or patch floppies, tape members or containers,
+ROMs, ROM keys, or rendered installation configuration. Publication retains
+the generic atomic, read-only, root:`unix-time-machine` policy; sessions remain
+copy-on-session. No AMIX-specific import bypass exists.
 
 Guest networking is disabled. No TCP listener or public access is part of M4.
 
@@ -83,11 +87,13 @@ system and real-host evidence.
   output, and executable hash. The launcher and network helpers are absent.
   Real-host qualification confirmed A3000 startup, MMU/FPU, memory, RDB, tape,
   ROM loading, local serial PTY attachment, controlled exit, and local display.
-- **M4.2 — IMPLEMENTED / AWAITING REAL-HOST QUALIFICATION:** observed media
-  inventory and base-install staging are implemented. No operator AMIX media or
-  completed installation evidence is available in this repository; exact
-  filenames, hashes, prompt sequence, RDB geometry, partitions, filesystems,
-  and shutdown behavior remain HUMAN_REQUIRED.
+- **M4.2 — BASE INSTALL QUALIFIED / AWAITING GOLDEN PUBLICATION:** observed
+  media inventory, preservation-safe staging, and the generic golden-import
+  contract are implemented. A real installation passed hard-disk first boot,
+  root login, filesystem/swap verification, and clean System V shutdown. The
+  installed HDF also passed RDB/PART structure and bootblock checksum checks.
+  Actual golden publication and verification remain explicit operator actions;
+  M4.2 is not complete until both have occurred.
 - **M4.3:** official patch procedure and resulting identity; exact serial
   device, getty/inittab, baud and privileged-login behavior; exact clean halt
   command/marker; FS-UAE behavior after halt.
@@ -281,8 +287,8 @@ getty, patch, broker, or guest-network setup.
 
 Failures never trigger staging cleanup. The workspace retains copies, disk,
 rendered configuration, logs, screenshots, inventory linkage, and the
-HUMAN_REQUIRED evidence worksheet. No AMIX golden is created or importable from
-this manifest.
+HUMAN_REQUIRED evidence worksheet. Preparation never creates a golden. After
+qualification, the generic importer can publish only the manifest-selected RDB.
 
 ### M4.2 preparation commands
 
@@ -354,12 +360,13 @@ DISPLAY=:99 /usr/bin/fs-uae \
   2> /srv/unix-time-machine/staging/amix-m42-base-install/fs-uae-first-boot.stderr
 ```
 
-Confirm no floppy or tape is attached, reach native login or first-boot
-configuration, and record base AMIX
-2.1 identity, devices, memory, partitions, filesystems, boot partition, and
-release data. Observe the minimum safe shutdown command, sync/unmount output,
-stable halted marker, and whether FS-UAE remains running; these observations
-are inputs to M4.3, not an implemented shutdown protocol.
+The real-host run confirmed no floppy or tape was needed for the hard-disk
+boot, reached base AMIX 2.1 root login, verified filesystems and swap, and
+completed a clean System V shutdown. Kickstart 2.04 for A3000 produced a white
+screen boot failure under the tested FS-UAE UAE core. A3000 Kickstart 3.1 then
+successfully booted the same verified RDB/HDF. Independent checks of that HDF
+passed its RDB/PART structures and bootblock checksums. These observations do
+not establish the later patch, serial-console, or broker runtime contracts.
 
 Before and after each emulator run, compare listening TCP sockets. After the
 installation, re-hash every canonical source listed in the inventory and record
@@ -370,6 +377,17 @@ python3 scripts/utm.py media verify-amix-inventory \
   /srv/unix-time-machine/reports/amix-a3000/m42-media.json
 ```
 
-Any failure remains preserved. M4.2 becomes COMPLETE only after
-all 20 real-host gates in the task are reconciled; until then the installation
-procedure and evidence remain HUMAN_REQUIRED.
+Any failure remains preserved. Golden publication is deliberately not part of
+automated validation and remains this explicit operator action after this
+commit:
+
+```sh
+sudo python3 scripts/utm.py golden import amix-a3000 \
+  /srv/unix-time-machine/staging/amix-m42-base-install
+```
+
+M4.2 must not be marked complete until the qualified real staging HDF has been
+imported and the resulting golden bytes, metadata, ownership, modes, and hash
+have been verified. The observed installed-output hash is qualification
+evidence, not versioned source-media identity, and is therefore not pinned in
+the manifest.

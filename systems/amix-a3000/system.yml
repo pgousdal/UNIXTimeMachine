@@ -78,6 +78,15 @@ canonical_target:
   post_install_update: official AMIX 2.1 patch
   intended_result: patch level 2a / 2.1c kernel
   result_qualification_required: true
+prepared:
+  disks:
+    - id: system
+      unit: scsi6
+      device: RDB hardfile
+      source_filename: base-amix-2.1-installation-staging.hdf
+      golden_filename: amix-system.hdf
+      session_filename: amix-system.hdf
+      runtime_token: "@SESSION_RDB@"
 preservation:
   source_media: immutable-external
   installation: writable-private-staging
@@ -91,4 +100,4 @@ status: defined
 milestones:
   m4.0: complete
   m4.1: complete
-  m4.2: implemented-awaiting-real-host-qualification
+  m4.2: base-install-qualified-awaiting-golden-publication
